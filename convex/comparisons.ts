@@ -1,6 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
+// Constants
+const DAYS_MS = 24 * 60 * 60 * 1000;
+const NEW_ITEM_THRESHOLD = 5;
+
 // Calculate new Elo ratings
 function calculateElo(
   winnerRating: number,
@@ -24,6 +28,17 @@ function calculateElo(
   const loserNew = Math.round(loserRating + loserK * (0 - expectedLoser));
 
   return { winnerNew, loserNew };
+}
+
+// Calculate next comparison due time based on comparison count
+function getNextComparisonDue(comparisonCount: number): number {
+  const now = Date.now();
+  if (comparisonCount < NEW_ITEM_THRESHOLD) {
+    // New items: resurface in 1-2 days
+    return now + DAYS_MS * (1 + Math.random());
+  }
+  // Established items: resurface in 7-14 days
+  return now + DAYS_MS * (7 + Math.random() * 7);
 }
 
 // Get two random items for comparison
@@ -59,6 +74,8 @@ export const recordComparison = mutation({
     loserId: v.id("userLibrary"),
   },
   handler: async (ctx, args) => {
+    const now = Date.now();
+
     // Fetch both items
     const winner = await ctx.db.get(args.winnerId);
     const loser = await ctx.db.get(args.loserId);
@@ -75,27 +92,86 @@ export const recordComparison = mutation({
       loser.comparisonCount
     );
 
-    // Update both items
+    const winnerNewCount = winner.comparisonCount + 1;
+    const loserNewCount = loser.comparisonCount + 1;
+
+    // Update both items with scheduling info
     await ctx.db.patch(args.winnerId, {
       eloRating: winnerNew,
-      comparisonCount: winner.comparisonCount + 1,
-      updatedAt: Date.now(),
+      comparisonCount: winnerNewCount,
+      lastComparedAt: now,
+      nextComparisonDue: getNextComparisonDue(winnerNewCount),
+      needsReranking: false, // Clear re-ranking flag after comparison
+      updatedAt: now,
     });
 
     await ctx.db.patch(args.loserId, {
       eloRating: loserNew,
-      comparisonCount: loser.comparisonCount + 1,
-      updatedAt: Date.now(),
+      comparisonCount: loserNewCount,
+      lastComparedAt: now,
+      nextComparisonDue: getNextComparisonDue(loserNewCount),
+      needsReranking: false,
+      updatedAt: now,
     });
 
     // Record the comparison
     await ctx.db.insert("comparisons", {
       winnerId: args.winnerId,
       loserId: args.loserId,
-      createdAt: Date.now(),
+      isTie: false,
+      createdAt: now,
     });
 
     return { winnerNew, loserNew };
+  },
+});
+
+// Record a tie (user couldn't decide)
+export const recordTie = mutation({
+  args: {
+    item1Id: v.id("userLibrary"),
+    item2Id: v.id("userLibrary"),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    // Fetch both items
+    const item1 = await ctx.db.get(args.item1Id);
+    const item2 = await ctx.db.get(args.item2Id);
+
+    if (!item1 || !item2) {
+      throw new Error("One or both items not found");
+    }
+
+    const item1NewCount = item1.comparisonCount + 1;
+    const item2NewCount = item2.comparisonCount + 1;
+
+    // Update both items - no Elo change, but count the comparison
+    await ctx.db.patch(args.item1Id, {
+      comparisonCount: item1NewCount,
+      lastComparedAt: now,
+      nextComparisonDue: getNextComparisonDue(item1NewCount),
+      needsReranking: false,
+      updatedAt: now,
+    });
+
+    await ctx.db.patch(args.item2Id, {
+      comparisonCount: item2NewCount,
+      lastComparedAt: now,
+      nextComparisonDue: getNextComparisonDue(item2NewCount),
+      needsReranking: false,
+      updatedAt: now,
+    });
+
+    // Record the tie comparison
+    await ctx.db.insert("comparisons", {
+      winnerId: args.item1Id, // Arbitrary assignment for tie
+      loserId: args.item2Id,
+      isTie: true,
+      createdAt: now,
+    });
+
+    return { item1Rating: item1.eloRating, item2Rating: item2.eloRating };
   },
 });
 

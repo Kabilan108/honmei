@@ -71,6 +71,11 @@ export default defineSchema({
     // Personal notes
     userNotes: v.optional(v.string()),
 
+    // Comparison scheduling
+    lastComparedAt: v.optional(v.number()),
+    nextComparisonDue: v.optional(v.number()),
+    needsReranking: v.optional(v.boolean()),
+
     // Timestamps
     addedAt: v.number(),
     updatedAt: v.number(),
@@ -78,12 +83,14 @@ export default defineSchema({
     .index("by_media_item", ["mediaItemId"])
     .index("by_elo_rating", ["eloRating"])
     .index("by_watch_status", ["watchStatus"])
-    .index("by_added_at", ["addedAt"]),
+    .index("by_added_at", ["addedAt"])
+    .index("by_next_comparison", ["nextComparisonDue"]),
 
   // Comparison history for Elo calculations
   comparisons: defineTable({
     winnerId: v.id("userLibrary"),
     loserId: v.id("userLibrary"),
+    isTie: v.optional(v.boolean()), // True if user couldn't decide
     createdAt: v.number(),
   })
     .index("by_winner", ["winnerId"])

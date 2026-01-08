@@ -1,11 +1,119 @@
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
+import { LibraryCard } from "@/components/LibraryCard";
+import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, Filter } from "lucide-react";
+
+type MediaType = "ANIME" | "MANGA";
+type SortOption = "elo" | "recent" | "alphabetical" | "comparisons";
+
+const STORAGE_KEY = "curator-library-tab";
 
 export function HomePage() {
   const library = useQuery((api as any).library?.getByElo);
 
+  // Tab state with localStorage persistence
+  const [activeTab, setActiveTab] = useState<MediaType>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === "ANIME" || stored === "MANGA") {
+        return stored;
+      }
+    }
+    return "ANIME";
+  });
+
+  // Sort and filter state
+  const [sortBy, setSortBy] = useState<SortOption>("elo");
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+
+  // Persist tab selection
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, activeTab);
+  }, [activeTab]);
+
+  // Reset genre filter when switching tabs
+  useEffect(() => {
+    setSelectedGenres([]);
+  }, [activeTab]);
+
+  // Filter items by media type
+  const filteredByType = useMemo(() => {
+    if (!library) return { anime: [], manga: [] };
+    return {
+      anime: library.filter((item: any) => item.media?.type === "ANIME"),
+      manga: library.filter((item: any) => item.media?.type === "MANGA"),
+    };
+  }, [library]);
+
+  // Get items for current tab
+  const currentTabItems = activeTab === "ANIME" ? filteredByType.anime : filteredByType.manga;
+
+  // Get unique genres from current tab items
+  const availableGenres = useMemo(() => {
+    const genreSet = new Set<string>();
+    currentTabItems.forEach((item: any) => {
+      item.media?.genres?.forEach((genre: string) => genreSet.add(genre));
+    });
+    return Array.from(genreSet).sort();
+  }, [currentTabItems]);
+
+  // Filter by selected genres
+  const filteredByGenre = useMemo(() => {
+    if (selectedGenres.length === 0) return currentTabItems;
+    return currentTabItems.filter((item: any) =>
+      selectedGenres.some((genre) => item.media?.genres?.includes(genre))
+    );
+  }, [currentTabItems, selectedGenres]);
+
+  // Sort items
+  const sortedItems = useMemo(() => {
+    const items = [...filteredByGenre];
+    switch (sortBy) {
+      case "elo":
+        return items.sort((a: any, b: any) => b.eloRating - a.eloRating);
+      case "recent":
+        return items.sort((a: any, b: any) => b.addedAt - a.addedAt);
+      case "alphabetical":
+        return items.sort((a: any, b: any) =>
+          (a.media?.title || "").localeCompare(b.media?.title || "")
+        );
+      case "comparisons":
+        return items.sort((a: any, b: any) => b.comparisonCount - a.comparisonCount);
+      default:
+        return items;
+    }
+  }, [filteredByGenre, sortBy]);
+
+  const toggleGenre = (genre: string) => {
+    setSelectedGenres((prev) =>
+      prev.includes(genre)
+        ? prev.filter((g) => g !== genre)
+        : [...prev, genre]
+    );
+  };
+
+  const clearGenres = () => {
+    setSelectedGenres([]);
+  };
+
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">My Library</h1>
         <p className="text-neutral-400 mt-2">
@@ -13,47 +121,159 @@ export function HomePage() {
         </p>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-neutral-800">
+        <button
+          onClick={() => setActiveTab("ANIME")}
+          className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+            activeTab === "ANIME"
+              ? "text-white"
+              : "text-neutral-400 hover:text-neutral-200"
+          }`}
+        >
+          Anime ({filteredByType.anime.length})
+          {activeTab === "ANIME" && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab("MANGA")}
+          className={`px-4 py-2 text-sm font-medium transition-colors relative ${
+            activeTab === "MANGA"
+              ? "text-white"
+              : "text-neutral-400 hover:text-neutral-200"
+          }`}
+        >
+          Manga ({filteredByType.manga.length})
+          {activeTab === "MANGA" && (
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+          )}
+        </button>
+      </div>
+
+      {/* Controls Row */}
+      <div className="flex flex-wrap gap-3 items-center">
+        {/* Sort Dropdown */}
+        <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="Sort by" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="elo">Elo Rank</SelectItem>
+            <SelectItem value="recent">Recently Added</SelectItem>
+            <SelectItem value="alphabetical">Alphabetical</SelectItem>
+            <SelectItem value="comparisons">Comparison Count</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Genre Filter Dropdown */}
+        {availableGenres.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="outline" className="gap-2">
+                  <Filter className="size-4" />
+                  Genres
+                  {selectedGenres.length > 0 && (
+                    <span className="bg-blue-600 text-white px-1.5 py-0.5 text-xs ml-1">
+                      {selectedGenres.length}
+                    </span>
+                  )}
+                  <ChevronDown className="size-4 ml-1" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent className="max-h-[300px] overflow-y-auto w-[200px]">
+              {selectedGenres.length > 0 && (
+                <button
+                  onClick={clearGenres}
+                  className="w-full px-2 py-2 text-xs text-left text-blue-400 hover:bg-neutral-800"
+                >
+                  Clear all filters
+                </button>
+              )}
+              {availableGenres.map((genre) => (
+                <DropdownMenuCheckboxItem
+                  key={genre}
+                  checked={selectedGenres.includes(genre)}
+                  onCheckedChange={() => toggleGenre(genre)}
+                >
+                  {genre}
+                </DropdownMenuCheckboxItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {/* Active Filters Display */}
+        {selectedGenres.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {selectedGenres.map((genre) => (
+              <button
+                key={genre}
+                onClick={() => toggleGenre(genre)}
+                className="text-xs bg-blue-600/20 text-blue-400 px-2 py-1 hover:bg-blue-600/30 transition-colors"
+              >
+                {genre} &times;
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Content */}
       {library === undefined ? (
         <div className="text-neutral-400">Loading...</div>
-      ) : library.length === 0 ? (
+      ) : currentTabItems.length === 0 ? (
         <div className="text-center py-12">
-          <p className="text-neutral-400 mb-4">Your library is empty</p>
+          <p className="text-neutral-400 mb-4">
+            No {activeTab.toLowerCase()} in your library yet
+          </p>
           <p className="text-sm text-neutral-500">
-            Add some anime or manga from the Search tab to get started!
+            Add some {activeTab.toLowerCase()} from the Search tab to get started!
           </p>
         </div>
-      ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {library.map((item: any) => (
-            <div
-              key={item._id}
-              className="bg-neutral-900 rounded-lg overflow-hidden border border-neutral-800"
-            >
-              <div className="aspect-[2/3] bg-neutral-800">
-                {item.media?.coverImage && (
-                  <img
-                    src={item.media.coverImage}
-                    alt={item.media.title}
-                    className="w-full h-full object-cover"
-                  />
-                )}
-              </div>
-              <div className="p-3">
-                <h3 className="font-medium text-sm line-clamp-2 mb-2">
-                  {item.media?.title}
-                </h3>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-blue-400 font-mono">
-                    {item.eloRating}
-                  </span>
-                  <span className="text-neutral-500">
-                    {item.comparisonCount} compares
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+      ) : sortedItems.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-neutral-400 mb-4">
+            No items match your filters
+          </p>
+          <button
+            onClick={clearGenres}
+            className="text-sm text-blue-400 hover:text-blue-300"
+          >
+            Clear filters
+          </button>
         </div>
+      ) : (
+        <>
+          {/* Score Explanation */}
+          {currentTabItems.length < 5 && (
+            <div className="text-xs text-neutral-500 bg-neutral-900 p-3 border border-neutral-800">
+              Add {5 - currentTabItems.length} more {activeTab.toLowerCase()} to see ranking scores.
+              Scores require at least 5 items.
+            </div>
+          )}
+
+          {/* Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            {sortedItems.map((item: any, index: number) => {
+              // Calculate rank based on Elo position in full list (not filtered)
+              const eloRank = currentTabItems
+                .sort((a: any, b: any) => b.eloRating - a.eloRating)
+                .findIndex((i: any) => i._id === item._id) + 1;
+
+              return (
+                <LibraryCard
+                  key={item._id}
+                  item={item}
+                  rank={sortBy === "elo" ? index + 1 : eloRank}
+                  totalItems={currentTabItems.length}
+                />
+              );
+            })}
+          </div>
+        </>
       )}
     </div>
   );

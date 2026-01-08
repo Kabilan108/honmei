@@ -9,8 +9,12 @@
  */
 
 import type * as comparisons from "../comparisons.js";
+import type * as export_ from "../export.js";
+import type * as import_ from "../import.js";
 import type * as library from "../library.js";
 import type * as media from "../media.js";
+import type * as ranking from "../ranking.js";
+import type * as stats from "../stats.js";
 
 import type {
   ApiFromModules,
@@ -20,8 +24,12 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   comparisons: typeof comparisons;
+  export: typeof export_;
+  import: typeof import_;
   library: typeof library;
   media: typeof media;
+  ranking: typeof ranking;
+  stats: typeof stats;
 }>;
 
 /**

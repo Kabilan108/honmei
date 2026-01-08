@@ -201,3 +201,114 @@ export async function getAniListMedia(id: number): Promise<AniListMedia> {
   const data: AniListMediaResponse = await response.json();
   return data.data.Media;
 }
+
+// Query to find media by MAL ID
+const MEDIA_BY_MAL_QUERY = `
+  query ($idMal: Int, $type: MediaType) {
+    Media(idMal: $idMal, type: $type) {
+      id
+      idMal
+      type
+      title {
+        romaji
+        english
+        native
+      }
+      description
+      coverImage {
+        large
+        extraLarge
+      }
+      bannerImage
+      genres
+      tags {
+        name
+        rank
+      }
+      format
+      status
+      episodes
+      chapters
+      averageScore
+      popularity
+      startDate {
+        year
+        month
+        day
+      }
+      endDate {
+        year
+        month
+        day
+      }
+    }
+  }
+`;
+
+// Lookup media by MAL ID
+export async function getAniListMediaByMalId(
+  malId: number,
+  type: "ANIME" | "MANGA"
+): Promise<AniListMedia | null> {
+  try {
+    const response = await fetch(ANILIST_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        query: MEDIA_BY_MAL_QUERY,
+        variables: { idMal: malId, type },
+      }),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = await response.json();
+    return data.data?.Media || null;
+  } catch {
+    return null;
+  }
+}
+
+// Batch fetch multiple media items by MAL IDs with rate limiting
+// AniList rate limit is 90 requests per minute, so we batch and add delays
+export async function batchFetchByMalIds(
+  items: Array<{ malId: number; type: "ANIME" | "MANGA" }>,
+  onProgress?: (current: number, total: number) => void
+): Promise<Map<string, AniListMedia>> {
+  const results = new Map<string, AniListMedia>();
+  const BATCH_SIZE = 5; // Concurrent requests per batch
+  const DELAY_MS = 350; // Delay between batches to stay under rate limit
+
+  for (let i = 0; i < items.length; i += BATCH_SIZE) {
+    const batch = items.slice(i, i + BATCH_SIZE);
+
+    // Fetch batch concurrently
+    const promises = batch.map(async (item) => {
+      const key = `${item.type}-${item.malId}`;
+      const media = await getAniListMediaByMalId(item.malId, item.type);
+      if (media) {
+        results.set(key, media);
+      }
+      return media;
+    });
+
+    await Promise.all(promises);
+
+    // Report progress
+    if (onProgress) {
+      onProgress(Math.min(i + BATCH_SIZE, items.length), items.length);
+    }
+
+    // Rate limit delay between batches (skip on last batch)
+    if (i + BATCH_SIZE < items.length) {
+      await new Promise((r) => setTimeout(r, DELAY_MS));
+    }
+  }
+
+  return results;
+}
