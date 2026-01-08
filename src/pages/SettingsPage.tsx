@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import {
   Check,
   Download,
@@ -24,7 +24,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import { type AniListMedia, batchFetchByMalIds } from "@/lib/anilist";
 import { api } from "../../convex/_generated/api";
 
 const ACCENT_COLORS = [
@@ -58,11 +57,12 @@ export function SettingsPage() {
   // Export state
   const [isExporting, setIsExporting] = useState(false);
 
-  // Queries
+  // Queries and actions
   const fullExport = useQuery((api as any).export?.getFullExport);
   const csvExport = useQuery((api as any).export?.getCsvExport);
   const importMalItem = useMutation((api as any).import?.importMalItem);
   const clearAllData = useMutation((api as any).import?.clearAllData);
+  const batchFetchAniListData = useAction((api as any).anilist?.batchFetchAniListData);
 
   // Apply theme changes
   useEffect(() => {
@@ -210,23 +210,48 @@ export function SettingsPage() {
         return;
       }
 
-      // Phase 1: Fetch AniList metadata for all items concurrently
+      // Phase 1: Fetch AniList metadata for all items via server-side action (avoids CORS)
       setImportProgress({
         current: 0,
         total: items.length,
         status: `Found ${items.length} items. Fetching metadata from AniList...`,
       });
 
-      const anilistData = await batchFetchByMalIds(
-        items.map((item) => ({ malId: item.malId, type: item.type, title: item.title })),
-        (current, total) => {
-          setImportProgress({
-            current,
-            total,
-            status: `Fetching metadata: ${current}/${total}`,
+      // Batch items in chunks for the server action
+      const CHUNK_SIZE = 20;
+      const anilistData: Record<string, {
+        anilistId: number;
+        title: string;
+        titleEnglish: string | null;
+        coverImage: string | null;
+        bannerImage: string | null;
+        genres: string[];
+        format: string | null;
+        episodes: number | null;
+        chapters: number | null;
+      } | null> = {};
+
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        const chunk = items.slice(i, i + CHUNK_SIZE);
+        setImportProgress({
+          current: i,
+          total: items.length,
+          status: `Fetching metadata: ${i}/${items.length}`,
+        });
+
+        try {
+          const chunkResults = await batchFetchAniListData({
+            items: chunk.map((item) => ({
+              malId: item.malId,
+              type: item.type,
+              title: item.title,
+            })),
           });
-        },
-      );
+          Object.assign(anilistData, chunkResults);
+        } catch (error) {
+          console.error(`Failed to fetch AniList data for chunk:`, error);
+        }
+      }
 
       // Phase 2: Import items to database
       setImportProgress({
@@ -241,7 +266,7 @@ export function SettingsPage() {
       for (let i = 0; i < items.length; i++) {
         const item = items[i];
         const key = `${item.type}-${item.malId}`;
-        const anilistMedia = anilistData.get(key);
+        const anilistMedia = anilistData[key];
 
         setImportProgress({
           current: i + 1,
@@ -253,13 +278,12 @@ export function SettingsPage() {
           // Use AniList data if available, fall back to MAL data
           const result = await importMalItem({
             malId: item.malId,
-            anilistId: anilistMedia?.id,
+            anilistId: anilistMedia?.anilistId,
             type: item.type,
-            title: anilistMedia?.title?.romaji || item.title,
-            titleEnglish: anilistMedia?.title?.english || undefined,
+            title: anilistMedia?.title || item.title,
+            titleEnglish: anilistMedia?.titleEnglish || undefined,
             coverImage:
-              anilistMedia?.coverImage?.extraLarge ||
-              anilistMedia?.coverImage?.large ||
+              anilistMedia?.coverImage ||
               `https://cdn.myanimelist.net/images/${item.type.toLowerCase()}/${item.malId}.jpg`,
             genres: anilistMedia?.genres || [],
             malScore: item.score,

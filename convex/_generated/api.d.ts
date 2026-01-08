@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as anilist from "../anilist.js";
 import type * as comparisons from "../comparisons.js";
 import type * as export_ from "../export.js";
 import type * as import_ from "../import.js";
@@ -23,6 +24,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  anilist: typeof anilist;
   comparisons: typeof comparisons;
   export: typeof export_;
   import: typeof import_;
