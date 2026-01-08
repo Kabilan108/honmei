@@ -2,7 +2,7 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 
 export function HomePage() {
-  const library = useQuery(api.library.getByElo);
+  const library = useQuery((api as any).library?.getByElo);
 
   return (
     <div className="space-y-6">
@@ -24,7 +24,7 @@ export function HomePage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {library.map((item) => (
+          {library.map((item: any) => (
             <div
               key={item._id}
               className="bg-neutral-900 rounded-lg overflow-hidden border border-neutral-800"

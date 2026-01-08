@@ -14,8 +14,8 @@ export function SearchPage() {
   const [filter, setFilter] = useState<"ALL" | "ANIME" | "MANGA">("ALL");
   const [addedItems, setAddedItems] = useState<Set<number>>(new Set());
 
-  const upsertMedia = useMutation(api.media.upsertMediaItem);
-  const addToLibrary = useMutation(api.library.addToLibrary);
+  const upsertMedia = useMutation((api as any).media?.upsertMediaItem);
+  const addToLibrary = useMutation((api as any).library?.addToLibrary);
 
   const handleSearch = async () => {
     if (!searchTerm.trim()) return;

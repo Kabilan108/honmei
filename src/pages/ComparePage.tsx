@@ -1,12 +1,11 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useState } from "react";
 
 export function ComparePage() {
-  const pair = useQuery(api.comparisons.getRandomPair);
-  const recordComparison = useMutation(api.comparisons.recordComparison);
+  const pair = useQuery((api as any).comparisons?.getRandomPair);
+  const recordComparison = useMutation((api as any).comparisons?.recordComparison);
   const [isComparing, setIsComparing] = useState(false);
 
   const handleChoice = async (winnerId: string, loserId: string) => {
@@ -127,7 +126,7 @@ export function ComparePage() {
             {/* Genres */}
             {item1.media?.genres && item1.media.genres.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {item1.media.genres.slice(0, 4).map((genre) => (
+                {item1.media.genres.slice(0, 4).map((genre: string) => (
                   <span
                     key={genre}
                     className="text-xs text-neutral-500 bg-neutral-800 px-2 py-1 rounded"
@@ -210,7 +209,7 @@ export function ComparePage() {
             {/* Genres */}
             {item2.media?.genres && item2.media.genres.length > 0 && (
               <div className="flex flex-wrap gap-1">
-                {item2.media.genres.slice(0, 4).map((genre) => (
+                {item2.media.genres.slice(0, 4).map((genre: string) => (
                   <span
                     key={genre}
                     className="text-xs text-neutral-500 bg-neutral-800 px-2 py-1 rounded"
