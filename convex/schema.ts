@@ -133,4 +133,42 @@ export default defineSchema({
     .index("by_user_library", ["userLibraryId"])
     .index("by_custom_field", ["customFieldId"])
     .index("by_user_library_and_field", ["userLibraryId", "customFieldId"]),
+
+  // Import jobs for tracking MAL import progress
+  importJobs: defineTable({
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+
+    // Items to import (stored as JSON array)
+    items: v.array(
+      v.object({
+        malId: v.number(),
+        type: v.union(v.literal("ANIME"), v.literal("MANGA")),
+        title: v.string(),
+        score: v.number(),
+        malStatus: v.string(),
+        episodes: v.optional(v.number()),
+        chapters: v.optional(v.number()),
+      }),
+    ),
+
+    // Progress tracking
+    totalItems: v.number(),
+    processedItems: v.number(),
+    successCount: v.number(),
+    failCount: v.number(),
+    currentBatch: v.number(),
+    totalBatches: v.number(),
+
+    // Timing
+    startedAt: v.number(),
+    completedAt: v.optional(v.number()),
+
+    // Error info if failed
+    error: v.optional(v.string()),
+  }).index("by_status", ["status"]),
 });

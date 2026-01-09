@@ -1,11 +1,11 @@
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import {
-  Check,
   Download,
   FileJson,
   FileSpreadsheet,
   Moon,
   Palette,
+  RefreshCw,
   Sun,
   Trash2,
   Upload,
@@ -45,25 +45,28 @@ export function SettingsPage() {
   });
 
   // MAL import state
-  const [isImporting, setIsImporting] = useState(false);
-  const [importProgress, setImportProgress] = useState<{
-    current: number;
-    total: number;
-    status: string;
-  } | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const [importComplete, setImportComplete] = useState(false);
+  const [parsingFile, setParsingFile] = useState(false);
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
 
-  // Queries and actions
+  // Refetch state
+  const [isRefetching, setIsRefetching] = useState(false);
+
+  // Queries and mutations
   const fullExport = useQuery((api as any).export?.getFullExport);
   const csvExport = useQuery((api as any).export?.getCsvExport);
-  const importMalItem = useMutation((api as any).import?.importMalItem);
   const clearAllData = useMutation((api as any).import?.clearAllData);
-  const batchFetchAniListData = useAction(
-    (api as any).anilist?.batchFetchAniListData,
+  const startImport = useMutation((api as any).importJobMutations?.startImport);
+  const activeImport = useQuery(
+    (api as any).importJobMutations?.getActiveImport,
+  );
+  const failedCovers = useQuery(
+    (api as any).importJobMutations?.getItemsWithFailedCovers,
+  );
+  const startRefetchFailedCovers = useMutation(
+    (api as any).importJobMutations?.startRefetchFailedCovers,
   );
 
   // Apply theme changes
@@ -187,26 +190,17 @@ export function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsImporting(true);
+    setParsingFile(true);
     setImportError(null);
-    setImportComplete(false);
-    setImportProgress({ current: 0, total: 0, status: "Reading file..." });
 
     try {
       // Handle .gz files by decompressing first
       let xmlText: string;
       if (file.name.endsWith(".gz")) {
-        setImportProgress({
-          current: 0,
-          total: 0,
-          status: "Decompressing file...",
-        });
         xmlText = await decompressGzip(file);
       } else {
         xmlText = await file.text();
       }
-
-      setImportProgress({ current: 0, total: 0, status: "Parsing XML..." });
 
       const items = parseMALXml(xmlText);
 
@@ -214,124 +208,29 @@ export function SettingsPage() {
         setImportError(
           "No valid entries found in the XML file. Make sure it's a MAL export file.",
         );
-        setIsImporting(false);
+        setParsingFile(false);
         return;
       }
 
-      // Phase 1: Fetch AniList metadata for all items via server-side action (avoids CORS)
-      setImportProgress({
-        current: 0,
-        total: items.length,
-        status: `Found ${items.length} items. Fetching metadata from AniList...`,
+      // Start the server-side import job
+      await startImport({
+        items: items.map((item) => ({
+          malId: item.malId,
+          type: item.type,
+          title: item.title,
+          score: item.score,
+          malStatus: item.status,
+          episodes: item.episodes,
+          chapters: item.chapters,
+        })),
       });
-
-      // Batch items in chunks for the server action
-      const CHUNK_SIZE = 20;
-      const anilistData: Record<
-        string,
-        {
-          anilistId: number;
-          title: string;
-          titleEnglish: string | null;
-          coverImage: string | null;
-          bannerImage: string | null;
-          genres: string[];
-          format: string | null;
-          episodes: number | null;
-          chapters: number | null;
-        } | null
-      > = {};
-
-      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-        const chunk = items.slice(i, i + CHUNK_SIZE);
-        setImportProgress({
-          current: i,
-          total: items.length,
-          status: `Fetching metadata: ${i}/${items.length}`,
-        });
-
-        try {
-          const chunkResults = await batchFetchAniListData({
-            items: chunk.map((item) => ({
-              malId: item.malId,
-              type: item.type,
-              title: item.title,
-            })),
-          });
-          Object.assign(anilistData, chunkResults);
-        } catch (error) {
-          console.error(`Failed to fetch AniList data for chunk:`, error);
-        }
-      }
-
-      // Phase 2: Import items to database
-      setImportProgress({
-        current: 0,
-        total: items.length,
-        status: `Metadata fetched. Importing to library...`,
-      });
-
-      let imported = 0;
-      let skipped = 0;
-
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const key = `${item.type}-${item.malId}`;
-        const anilistMedia = anilistData[key];
-
-        setImportProgress({
-          current: i + 1,
-          total: items.length,
-          status: `Importing: ${item.title}`,
-        });
-
-        try {
-          // Use AniList data if available, fall back to MAL data
-          const result = await importMalItem({
-            malId: item.malId,
-            anilistId: anilistMedia?.anilistId,
-            type: item.type,
-            title: anilistMedia?.title || item.title,
-            titleEnglish: anilistMedia?.titleEnglish || undefined,
-            coverImage:
-              anilistMedia?.coverImage ||
-              `https://cdn.myanimelist.net/images/${item.type.toLowerCase()}/${item.malId}.jpg`,
-            genres: anilistMedia?.genres || [],
-            malScore: item.score,
-            malStatus: item.status,
-            episodes: anilistMedia?.episodes ?? item.episodes,
-            chapters: anilistMedia?.chapters ?? item.chapters,
-          });
-
-          if (result.skipped) {
-            skipped++;
-          } else {
-            imported++;
-          }
-        } catch (error) {
-          console.error(`Failed to import ${item.title}:`, error);
-        }
-
-        // Small delay to avoid overwhelming the database
-        if (i % 10 === 0) {
-          await new Promise((r) => setTimeout(r, 50));
-        }
-      }
-
-      setImportProgress({
-        current: items.length,
-        total: items.length,
-        status: `Done! Imported ${imported}, skipped ${skipped} duplicates`,
-      });
-      setImportComplete(true);
     } catch (error) {
       console.error("Import failed:", error);
       setImportError(
         "Failed to parse the file. Make sure it's a valid MAL export (.xml or .xml.gz).",
       );
     } finally {
-      setIsImporting(false);
-      // Reset the file input
+      setParsingFile(false);
       e.target.value = "";
     }
   };
@@ -502,23 +401,27 @@ export function SettingsPage() {
               type="file"
               accept=".xml,.gz"
               onChange={handleFileImport}
-              disabled={isImporting}
-              className="flex-1 text-sm text-neutral-400 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-sm file:bg-neutral-800 file:text-neutral-200 hover:file:bg-neutral-700"
+              disabled={parsingFile || !!activeImport}
+              className="flex-1 text-sm text-neutral-400 file:mr-4 file:py-2 file:px-4 file:border-0 file:text-sm file:bg-neutral-800 file:text-neutral-200 hover:file:bg-neutral-700 disabled:opacity-50"
             />
           </div>
 
-          {importProgress && (
+          {parsingFile && (
+            <div className="text-sm text-neutral-400">Parsing file...</div>
+          )}
+
+          {activeImport && (
             <div className="space-y-2">
               <div className="text-sm text-neutral-400">
-                {importProgress.status}
+                {activeImport.status === "pending" && "Starting import..."}
+                {activeImport.status === "processing" &&
+                  `Importing: ${activeImport.processedItems}/${activeImport.totalItems}`}
               </div>
-              {importProgress.total > 0 && (
+              {activeImport.totalItems > 0 && (
                 <div className="w-full bg-neutral-800 h-2">
                   <div
                     className="bg-primary h-full transition-all"
-                    style={{
-                      width: `${(importProgress.current / importProgress.total) * 100}%`,
-                    }}
+                    style={{ width: `${activeImport.progress}%` }}
                   />
                 </div>
               )}
@@ -532,10 +435,38 @@ export function SettingsPage() {
             </div>
           )}
 
-          {importComplete && (
-            <div className="flex items-center gap-2 text-green-400 text-sm">
-              <Check className="size-4" />
-              Import complete!
+          {/* Refetch Failed Covers */}
+          {failedCovers && failedCovers.length > 0 && (
+            <div className="pt-4 border-t border-neutral-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-medium text-sm">
+                    {failedCovers.length} items with missing covers
+                  </div>
+                  <div className="text-xs text-neutral-400">
+                    These items failed to fetch cover images from AniList
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    setIsRefetching(true);
+                    try {
+                      await startRefetchFailedCovers({});
+                    } finally {
+                      setIsRefetching(false);
+                    }
+                  }}
+                  disabled={isRefetching || !!activeImport}
+                  className="gap-2"
+                >
+                  <RefreshCw
+                    className={`size-4 ${isRefetching ? "animate-spin" : ""}`}
+                  />
+                  Refetch Covers
+                </Button>
+              </div>
             </div>
           )}
         </div>
