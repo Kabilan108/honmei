@@ -21,8 +21,11 @@ export function ComparePage() {
     loserNew: number;
   } | null>(null);
 
-  const pair = useQuery((api as any).ranking?.getSmartPair, { mediaType });
-  const stats = useQuery((api as any).ranking?.getRankingStats, { mediaType });
+  const result = useQuery((api as any).ranking?.getSmartPairWithStats, {
+    mediaType,
+  });
+  const pair = result?.pair;
+  const stats = result?.stats;
   const recordComparison = useMutation(
     (api as any).comparisons?.recordComparison,
   );
@@ -110,7 +113,7 @@ export function ComparePage() {
     );
   }
 
-  if (pair === undefined) {
+  if (result === undefined) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-neutral-400">Loading...</div>

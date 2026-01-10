@@ -3,78 +3,122 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { CLOSE_RATING_RANGE, NEW_ITEM_THRESHOLD } from "./lib/constants";
 
+// Helper function to find a smart pair from a list of items
+function findSmartPair(
+  filteredItems: Doc<"userLibrary">[],
+): { item1: Doc<"userLibrary">; item2: Doc<"userLibrary"> } | null {
+  if (filteredItems.length < 2) {
+    return null;
+  }
+
+  // Sort by Elo for percentile-based pairing
+  const sortedByElo = [...filteredItems].sort(
+    (a, b) => b.eloRating - a.eloRating,
+  );
+
+  // Find items that need re-ranking first (triggered by status change to COMPLETED)
+  const needsReranking = filteredItems.filter((item) => item.needsReranking);
+  if (needsReranking.length > 0) {
+    const primaryItem = needsReranking[0];
+    const opponent = findOpponent(primaryItem, filteredItems, sortedByElo);
+    if (opponent) {
+      return { item1: primaryItem, item2: opponent };
+    }
+  }
+
+  // Find new items that need binary-search placement
+  const newItems = filteredItems.filter(
+    (item) => item.comparisonCount < NEW_ITEM_THRESHOLD,
+  );
+
+  if (newItems.length > 0) {
+    // Pick the newest item with fewest comparisons
+    const primaryItem = newItems.sort(
+      (a, b) => a.comparisonCount - b.comparisonCount,
+    )[0];
+
+    const opponent = findBinarySearchOpponent(primaryItem, sortedByElo);
+    if (opponent) {
+      return { item1: primaryItem, item2: opponent };
+    }
+  }
+
+  // For established items: pair within close rating range
+  // Prioritize items not compared recently
+  const established = filteredItems.filter(
+    (item) => item.comparisonCount >= NEW_ITEM_THRESHOLD,
+  );
+
+  if (established.length >= 2) {
+    // Sort by last compared time (oldest first), with null/undefined last
+    const byLastCompared = [...established].sort((a, b) => {
+      const aTime = a.lastComparedAt ?? 0;
+      const bTime = b.lastComparedAt ?? 0;
+      return aTime - bTime;
+    });
+
+    const primaryItem = byLastCompared[0];
+    const opponent = findCloseRatingOpponent(primaryItem, established);
+    if (opponent) {
+      return { item1: primaryItem, item2: opponent };
+    }
+  }
+
+  // Fallback: random pairing from filtered items
+  const shuffled = filteredItems.sort(() => Math.random() - 0.5);
+  return { item1: shuffled[0], item2: shuffled[1] };
+}
+
 // Get a smart pair for comparison, filtered by media type
 export const getSmartPair = query({
   args: {
     mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
   },
   handler: async (ctx, args) => {
-    // Get all library items of the requested type using the index
     const filteredItems = await ctx.db
       .query("userLibrary")
       .withIndex("by_media_type", (q) => q.eq("mediaType", args.mediaType))
       .collect();
 
-    if (filteredItems.length < 2) {
-      return null; // Not enough items of this type
-    }
+    return findSmartPair(filteredItems);
+  },
+});
 
-    // Sort by Elo for percentile-based pairing
-    const sortedByElo = [...filteredItems].sort(
-      (a, b) => b.eloRating - a.eloRating,
-    );
+// Combined query: get smart pair and stats in one request (saves a DB round-trip)
+export const getSmartPairWithStats = query({
+  args: {
+    mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
+  },
+  handler: async (ctx, args) => {
+    // Fetch items ONCE
+    const filteredItems = await ctx.db
+      .query("userLibrary")
+      .withIndex("by_media_type", (q) => q.eq("mediaType", args.mediaType))
+      .collect();
 
-    // Find items that need re-ranking first (triggered by status change to COMPLETED)
-    const needsReranking = filteredItems.filter((item) => item.needsReranking);
-    if (needsReranking.length > 0) {
-      const primaryItem = needsReranking[0];
-      const opponent = findOpponent(primaryItem, filteredItems, sortedByElo);
-      if (opponent) {
-        return { item1: primaryItem, item2: opponent };
-      }
-    }
+    // Calculate pair using shared helper
+    const pair = findSmartPair(filteredItems);
 
-    // Find new items that need binary-search placement
+    // Calculate stats from the SAME data (no second fetch)
     const newItems = filteredItems.filter(
       (item) => item.comparisonCount < NEW_ITEM_THRESHOLD,
     );
 
-    if (newItems.length > 0) {
-      // Pick the newest item with fewest comparisons
-      const primaryItem = newItems.sort(
-        (a, b) => a.comparisonCount - b.comparisonCount,
-      )[0];
+    const stats = {
+      totalItems: filteredItems.length,
+      itemsNeedingReranking: filteredItems.filter((i) => i.needsReranking)
+        .length,
+      newItemsNeedingPlacement: newItems.length,
+      averageComparisons:
+        filteredItems.length > 0
+          ? Math.round(
+              filteredItems.reduce((sum, i) => sum + i.comparisonCount, 0) /
+                filteredItems.length,
+            )
+          : 0,
+    };
 
-      const opponent = findBinarySearchOpponent(primaryItem, sortedByElo);
-      if (opponent) {
-        return { item1: primaryItem, item2: opponent };
-      }
-    }
-
-    // For established items: pair within close rating range
-    // Prioritize items not compared recently
-    const established = filteredItems.filter(
-      (item) => item.comparisonCount >= NEW_ITEM_THRESHOLD,
-    );
-
-    if (established.length >= 2) {
-      // Sort by last compared time (oldest first), with null/undefined last
-      const byLastCompared = [...established].sort((a, b) => {
-        const aTime = a.lastComparedAt ?? 0;
-        const bTime = b.lastComparedAt ?? 0;
-        return aTime - bTime;
-      });
-
-      const primaryItem = byLastCompared[0];
-      const opponent = findCloseRatingOpponent(primaryItem, established);
-      if (opponent) {
-        return { item1: primaryItem, item2: opponent };
-      }
-    }
-
-    // Fallback: random pairing from filtered items
-    const shuffled = filteredItems.sort(() => Math.random() - 0.5);
-    return { item1: shuffled[0], item2: shuffled[1] };
+    return { pair, stats };
   },
 });
 
