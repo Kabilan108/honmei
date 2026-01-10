@@ -26,12 +26,11 @@ interface LibraryItem {
   eloRating: number;
   comparisonCount: number;
   watchStatus: WatchStatus;
-  media: {
-    title: string;
-    coverImage: string;
-    genres: string[];
-    type: "ANIME" | "MANGA";
-  } | null;
+  // Denormalized media fields
+  mediaTitle: string;
+  mediaCoverImage: string;
+  mediaGenres: string[];
+  mediaType: "ANIME" | "MANGA";
 }
 
 interface LibraryCardProps {
@@ -81,7 +80,7 @@ export const LibraryCard = memo(function LibraryCard({
 
   const score = calculateScore();
   const statusInfo = statusConfig[item.watchStatus];
-  const displayGenres = item.media?.genres?.slice(0, 2) || [];
+  const displayGenres = item.mediaGenres.slice(0, 2);
 
   const handleRemove = () => {
     onRemove({ id: item._id });
@@ -91,14 +90,12 @@ export const LibraryCard = memo(function LibraryCard({
     <div className="bg-neutral-900 overflow-hidden border border-neutral-800 group relative">
       {/* Cover Image with Rank Overlay */}
       <div className="aspect-[2/3] bg-neutral-800 relative">
-        {item.media?.coverImage && (
-          <img
-            src={item.media.coverImage}
-            alt={item.media.title}
-            loading="lazy"
-            className="w-full h-full object-cover"
-          />
-        )}
+        <img
+          src={item.mediaCoverImage}
+          alt={item.mediaTitle}
+          loading="lazy"
+          className="w-full h-full object-cover"
+        />
 
         {/* Rank Badge - Top Left */}
         <div className="absolute top-0 left-0 bg-black/80 px-2 py-1 text-sm font-bold text-white">
@@ -132,9 +129,9 @@ export const LibraryCard = memo(function LibraryCard({
               <AlertDialogHeader>
                 <AlertDialogTitle>Remove from Library</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to remove "{item.media?.title}" from
-                  your library? This will also remove all comparison history for
-                  this item.
+                  Are you sure you want to remove "{item.mediaTitle}" from your
+                  library? This will also remove all comparison history for this
+                  item.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -152,7 +149,7 @@ export const LibraryCard = memo(function LibraryCard({
       <div className="p-3 space-y-2">
         {/* Title */}
         <h3 className="font-medium text-sm line-clamp-2 leading-tight">
-          {item.media?.title}
+          {item.mediaTitle}
         </h3>
 
         {/* Status Badge */}

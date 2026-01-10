@@ -57,8 +57,8 @@ export function HomePage() {
   const filteredByType = useMemo(() => {
     if (!library) return { anime: [], manga: [] };
     return {
-      anime: library.filter((item: any) => item.media?.type === "ANIME"),
-      manga: library.filter((item: any) => item.media?.type === "MANGA"),
+      anime: library.filter((item: any) => item.mediaType === "ANIME"),
+      manga: library.filter((item: any) => item.mediaType === "MANGA"),
     };
   }, [library]);
 
@@ -70,7 +70,7 @@ export function HomePage() {
   const availableGenres = useMemo(() => {
     const genreSet = new Set<string>();
     currentTabItems.forEach((item: any) => {
-      item.media?.genres?.forEach((genre: string) => {
+      item.mediaGenres?.forEach((genre: string) => {
         genreSet.add(genre);
       });
     });
@@ -81,7 +81,7 @@ export function HomePage() {
   const filteredByGenre = useMemo(() => {
     if (selectedGenres.length === 0) return currentTabItems;
     return currentTabItems.filter((item: any) =>
-      selectedGenres.some((genre) => item.media?.genres?.includes(genre)),
+      selectedGenres.some((genre) => item.mediaGenres?.includes(genre)),
     );
   }, [currentTabItems, selectedGenres]);
 
@@ -107,7 +107,7 @@ export function HomePage() {
         return items.sort((a: any, b: any) => b.addedAt - a.addedAt);
       case "alphabetical":
         return items.sort((a: any, b: any) =>
-          (a.media?.title || "").localeCompare(b.media?.title || ""),
+          (a.mediaTitle || "").localeCompare(b.mediaTitle || ""),
         );
       case "comparisons":
         return items.sort(

@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import type { Doc } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { DAYS_MS } from "./lib/constants";
 
@@ -14,19 +15,12 @@ export const getUserStats = query({
 
     const libraryItems = await ctx.db.query("userLibrary").collect();
 
-    // Count anime vs manga
-    const itemsWithMedia = await Promise.all(
-      libraryItems.map(async (item) => {
-        const media = await ctx.db.get(item.mediaItemId);
-        return { ...item, media };
-      }),
-    );
-
-    const animeCount = itemsWithMedia.filter(
-      (i) => i.media?.type === "ANIME",
+    // Count anime vs manga using denormalized mediaType
+    const animeCount = libraryItems.filter(
+      (i) => i.mediaType === "ANIME",
     ).length;
-    const mangaCount = itemsWithMedia.filter(
-      (i) => i.media?.type === "MANGA",
+    const mangaCount = libraryItems.filter(
+      (i) => i.mediaType === "MANGA",
     ).length;
 
     // Calculate streak
@@ -208,22 +202,23 @@ export const getTopItems = query({
   },
   handler: async (ctx, args) => {
     const limit = args.limit ?? 10;
-    const libraryItems = await ctx.db
-      .query("userLibrary")
-      .withIndex("by_elo_rating")
-      .order("desc")
-      .collect();
 
-    const itemsWithMedia = await Promise.all(
-      libraryItems.map(async (item) => {
-        const media = await ctx.db.get(item.mediaItemId);
-        return { ...item, media };
-      }),
-    );
-
-    let filtered = itemsWithMedia;
+    // Get items, optionally filtered by type
+    let filtered: Doc<"userLibrary">[];
     if (args.mediaType) {
-      filtered = itemsWithMedia.filter((i) => i.media?.type === args.mediaType);
+      const mediaType = args.mediaType;
+      filtered = await ctx.db
+        .query("userLibrary")
+        .withIndex("by_media_type", (q) => q.eq("mediaType", mediaType))
+        .collect();
+      // Sort by Elo (can't use multiple indexes)
+      filtered.sort((a, b) => b.eloRating - a.eloRating);
+    } else {
+      filtered = await ctx.db
+        .query("userLibrary")
+        .withIndex("by_elo_rating")
+        .order("desc")
+        .collect();
     }
 
     const total = filtered.length;
@@ -235,9 +230,9 @@ export const getTopItems = query({
 
       return {
         rank,
-        title: item.media?.title ?? "Unknown",
-        coverImage: item.media?.coverImage,
-        type: item.media?.type,
+        title: item.mediaTitle,
+        coverImage: item.mediaCoverImage,
+        type: item.mediaType,
         eloRating: item.eloRating,
         percentileScore: score,
         comparisonCount: item.comparisonCount,

@@ -5,14 +5,12 @@ interface ComparisonItem {
   _id: string;
   eloRating: number;
   comparisonCount: number;
-  media?: {
-    title: string;
-    coverImage: string;
-    bannerImage?: string;
-    type: string;
-    format?: string;
-    genres?: string[];
-  } | null;
+  // Denormalized media fields
+  mediaTitle: string;
+  mediaCoverImage: string;
+  mediaBannerImage?: string;
+  mediaType: "ANIME" | "MANGA";
+  mediaGenres: string[];
 }
 
 interface ComparisonCardProps {
@@ -36,17 +34,17 @@ export function ComparisonCard({
       className="bg-neutral-900 border-2 border-neutral-800 overflow-hidden hover:border-blue-500 transition-all disabled:opacity-50 text-left focus:outline-none focus:border-blue-500"
     >
       <div className="aspect-video bg-neutral-800 relative overflow-hidden">
-        {item.media?.bannerImage ? (
+        {item.mediaBannerImage ? (
           <img
-            src={item.media.bannerImage}
-            alt={item.media.title}
+            src={item.mediaBannerImage}
+            alt={item.mediaTitle}
             loading="lazy"
             className="w-full h-full object-cover"
           />
         ) : (
           <img
-            src={item.media?.coverImage}
-            alt={item.media?.title}
+            src={item.mediaCoverImage}
+            alt={item.mediaTitle}
             loading="lazy"
             className="w-full h-full object-cover blur-lg scale-110"
           />
@@ -57,28 +55,21 @@ export function ComparisonCard({
       <div className="p-6 space-y-4">
         <div className="flex gap-4">
           <div className="w-20 h-28 bg-neutral-800 overflow-hidden flex-shrink-0">
-            {item.media?.coverImage && (
-              <img
-                src={item.media.coverImage}
-                alt={item.media.title}
-                loading="lazy"
-                className="w-full h-full object-cover"
-              />
-            )}
+            <img
+              src={item.mediaCoverImage}
+              alt={item.mediaTitle}
+              loading="lazy"
+              className="w-full h-full object-cover"
+            />
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-xl font-bold mb-2 line-clamp-2">
-              {item.media?.title}
+              {item.mediaTitle}
             </h3>
             <div className="flex flex-wrap gap-1">
               <Badge variant="secondary" className="text-xs">
-                {item.media?.type}
+                {item.mediaType}
               </Badge>
-              {item.media?.format && (
-                <Badge variant="outline" className="text-xs">
-                  {item.media.format}
-                </Badge>
-              )}
             </div>
           </div>
         </div>
@@ -94,9 +85,9 @@ export function ComparisonCard({
           </div>
         </div>
 
-        {item.media?.genres && item.media.genres.length > 0 && (
+        {item.mediaGenres.length > 0 && (
           <div className="flex flex-wrap gap-1">
-            {item.media.genres.slice(0, 4).map((genre: string) => (
+            {item.mediaGenres.slice(0, 4).map((genre) => (
               <span
                 key={genre}
                 className="text-xs text-neutral-500 bg-neutral-800 px-2 py-1"

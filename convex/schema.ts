@@ -56,6 +56,13 @@ export default defineSchema({
   userLibrary: defineTable({
     mediaItemId: v.id("mediaItems"),
 
+    // Denormalized from mediaItems for query performance
+    mediaTitle: v.string(),
+    mediaCoverImage: v.string(),
+    mediaBannerImage: v.optional(v.string()),
+    mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
+    mediaGenres: v.array(v.string()),
+
     // Elo ranking system
     eloRating: v.number(), // Default: 1500
     comparisonCount: v.number(), // Default: 0
@@ -88,7 +95,8 @@ export default defineSchema({
     .index("by_elo_rating", ["eloRating"])
     .index("by_watch_status", ["watchStatus"])
     .index("by_added_at", ["addedAt"])
-    .index("by_next_comparison", ["nextComparisonDue"]),
+    .index("by_next_comparison", ["nextComparisonDue"])
+    .index("by_media_type", ["mediaType"]),
 
   // Comparison history for Elo calculations
   comparisons: defineTable({

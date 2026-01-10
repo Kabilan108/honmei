@@ -196,8 +196,22 @@ export const importSingleItem = internalMutation({
       const eloRating = malScoreToElo(item.score);
       const watchStatus = malStatusToWatchStatus(item.malStatus);
 
+      // Get cover image and title for denormalized fields
+      const coverImage =
+        anilistData?.coverImage ??
+        `https://cdn.myanimelist.net/images/${item.type.toLowerCase()}/${item.malId}.jpg`;
+      const title = anilistData?.title ?? item.title;
+      const genres = anilistData?.genres ?? [];
+
       await ctx.db.insert("userLibrary", {
         mediaItemId,
+        // Denormalized fields
+        mediaTitle: title,
+        mediaCoverImage: coverImage,
+        mediaBannerImage: anilistData?.bannerImage,
+        mediaType: item.type,
+        mediaGenres: genres,
+        // Elo fields
         eloRating,
         comparisonCount: 0,
         customTags: [],

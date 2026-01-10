@@ -7,6 +7,7 @@ export const getAnilistIds = query({
   handler: async (ctx) => {
     const libraryItems = await ctx.db.query("userLibrary").collect();
 
+    // Fetch media items in parallel to get anilistIds
     const anilistIds = await Promise.all(
       libraryItems.map(async (item) => {
         const media = await ctx.db.get(item.mediaItemId);
@@ -27,18 +28,8 @@ export const getAll = query({
       .order("desc")
       .collect();
 
-    // Fetch media details for each library item
-    const itemsWithMedia = await Promise.all(
-      libraryItems.map(async (item) => {
-        const media = await ctx.db.get(item.mediaItemId);
-        return {
-          ...item,
-          media,
-        };
-      }),
-    );
-
-    return itemsWithMedia;
+    // Return items directly - media data is denormalized
+    return libraryItems;
   },
 });
 
@@ -52,17 +43,8 @@ export const getByElo = query({
       .order("desc")
       .collect();
 
-    const itemsWithMedia = await Promise.all(
-      libraryItems.map(async (item) => {
-        const media = await ctx.db.get(item.mediaItemId);
-        return {
-          ...item,
-          media,
-        };
-      }),
-    );
-
-    return itemsWithMedia;
+    // Return items directly - media data is denormalized
+    return libraryItems;
   },
 });
 
@@ -70,14 +52,8 @@ export const getByElo = query({
 export const getById = query({
   args: { id: v.id("userLibrary") },
   handler: async (ctx, args) => {
-    const libraryItem = await ctx.db.get(args.id);
-    if (!libraryItem) return null;
-
-    const media = await ctx.db.get(libraryItem.mediaItemId);
-    return {
-      ...libraryItem,
-      media,
-    };
+    // Return item directly - media data is denormalized
+    return await ctx.db.get(args.id);
   },
 });
 
@@ -104,10 +80,23 @@ export const addToLibrary = mutation({
       throw new Error("Item already in library");
     }
 
+    // Fetch media item to copy denormalized fields
+    const media = await ctx.db.get(args.mediaItemId);
+    if (!media) {
+      throw new Error("Media item not found");
+    }
+
     const now = Date.now();
     const id = await ctx.db.insert("userLibrary", {
       mediaItemId: args.mediaItemId,
-      eloRating: 1500, // Starting Elo
+      // Denormalized fields
+      mediaTitle: media.title,
+      mediaCoverImage: media.coverImage,
+      mediaBannerImage: media.bannerImage,
+      mediaType: media.type,
+      mediaGenres: media.genres,
+      // Elo fields
+      eloRating: 1500,
       comparisonCount: 0,
       customTags: [],
       watchStatus: args.watchStatus,

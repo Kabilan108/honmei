@@ -181,21 +181,16 @@ export const getHistory = query({
       .order("desc")
       .take(limit);
 
-    // Fetch details for each comparison
+    // Fetch library items for each comparison (media data is denormalized)
     const history = await Promise.all(
       comparisons.map(async (comp) => {
         const winner = await ctx.db.get(comp.winnerId);
         const loser = await ctx.db.get(comp.loserId);
 
-        const winnerMedia = winner
-          ? await ctx.db.get(winner.mediaItemId)
-          : null;
-        const loserMedia = loser ? await ctx.db.get(loser.mediaItemId) : null;
-
         return {
           ...comp,
-          winner: winner ? { ...winner, media: winnerMedia } : null,
-          loser: loser ? { ...loser, media: loserMedia } : null,
+          winner,
+          loser,
         };
       }),
     );

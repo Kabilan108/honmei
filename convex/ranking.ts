@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import { CLOSE_RATING_RANGE, NEW_ITEM_THRESHOLD } from "./lib/constants";
 
@@ -9,20 +9,11 @@ export const getSmartPair = query({
     mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
   },
   handler: async (ctx, args) => {
-    // Get all library items with their media
-    const allItems = await ctx.db.query("userLibrary").collect();
-
-    // Filter to only items of the requested type
-    const itemsWithMedia = await Promise.all(
-      allItems.map(async (item) => {
-        const media = await ctx.db.get(item.mediaItemId);
-        return { ...item, media };
-      }),
-    );
-
-    const filteredItems = itemsWithMedia.filter(
-      (item) => item.media?.type === args.mediaType,
-    );
+    // Get all library items of the requested type using the index
+    const filteredItems = await ctx.db
+      .query("userLibrary")
+      .withIndex("by_media_type", (q) => q.eq("mediaType", args.mediaType))
+      .collect();
 
     if (filteredItems.length < 2) {
       return null; // Not enough items of this type
@@ -202,19 +193,17 @@ export const getRankingStats = query({
     mediaType: v.optional(v.union(v.literal("ANIME"), v.literal("MANGA"))),
   },
   handler: async (ctx, args) => {
-    const allItems = await ctx.db.query("userLibrary").collect();
-
-    // Get media types for filtering
-    const itemsWithMedia = await Promise.all(
-      allItems.map(async (item) => {
-        const media = await ctx.db.get(item.mediaItemId);
-        return { ...item, media };
-      }),
-    );
-
-    const filteredItems = args.mediaType
-      ? itemsWithMedia.filter((item) => item.media?.type === args.mediaType)
-      : itemsWithMedia;
+    // Get library items, optionally filtered by type
+    let filteredItems: Doc<"userLibrary">[];
+    if (args.mediaType) {
+      const mediaType = args.mediaType;
+      filteredItems = await ctx.db
+        .query("userLibrary")
+        .withIndex("by_media_type", (q) => q.eq("mediaType", mediaType))
+        .collect();
+    } else {
+      filteredItems = await ctx.db.query("userLibrary").collect();
+    }
 
     const comparisons = await ctx.db.query("comparisons").collect();
 
@@ -254,18 +243,11 @@ export const getItemsWithPercentile = query({
     mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
   },
   handler: async (ctx, args) => {
-    const allItems = await ctx.db.query("userLibrary").collect();
-
-    const itemsWithMedia = await Promise.all(
-      allItems.map(async (item) => {
-        const media = await ctx.db.get(item.mediaItemId);
-        return { ...item, media };
-      }),
-    );
-
-    const filteredItems = itemsWithMedia.filter(
-      (item) => item.media?.type === args.mediaType,
-    );
+    // Get items of the requested type using the index
+    const filteredItems = await ctx.db
+      .query("userLibrary")
+      .withIndex("by_media_type", (q) => q.eq("mediaType", args.mediaType))
+      .collect();
 
     // Sort by Elo descending
     const sorted = filteredItems.sort((a, b) => b.eloRating - a.eloRating);
