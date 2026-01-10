@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
@@ -45,6 +46,20 @@ export const getByElo = query({
 
     // Return items directly - media data is denormalized
     return libraryItems;
+  },
+});
+
+// Get library items with pagination (for large libraries)
+export const getByEloPaginated = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const results = await ctx.db
+      .query("userLibrary")
+      .withIndex("by_elo_rating")
+      .order("desc")
+      .paginate(args.paginationOpts);
+
+    return results;
   },
 });
 
