@@ -57,7 +57,7 @@ function ActivityBar({ days }: ActivityBarProps) {
 }
 
 export function StatsPanel() {
-  const stats = useQuery((api as any).stats?.getUserStats);
+  const stats = useQuery((api as any).stats?.getAggregatedStats);
 
   if (!stats) {
     return (
@@ -117,7 +117,7 @@ export function StatsPanel() {
 
 // Compact version for inline use
 export function StatsCompact() {
-  const stats = useQuery((api as any).stats?.getUserStats);
+  const stats = useQuery((api as any).stats?.getAggregatedStats);
 
   if (!stats) return null;
 

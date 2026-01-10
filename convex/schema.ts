@@ -142,6 +142,24 @@ export default defineSchema({
     .index("by_custom_field", ["customFieldId"])
     .index("by_user_library_and_field", ["userLibraryId", "customFieldId"]),
 
+  // Aggregated user stats - singleton table for O(1) stats reads
+  userStats: defineTable({
+    totalComparisons: v.number(),
+    tieCount: v.number(),
+    currentStreak: v.number(),
+    longestStreak: v.number(),
+    // Last comparison date (midnight timestamp) for streak tracking
+    lastComparisonDate: v.optional(v.number()),
+    // Rolling 7-day window for activity chart
+    last7Days: v.array(
+      v.object({
+        date: v.number(), // midnight timestamp
+        count: v.number(),
+      }),
+    ),
+    updatedAt: v.number(),
+  }),
+
   // Import jobs for tracking MAL import progress
   importJobs: defineTable({
     status: v.union(

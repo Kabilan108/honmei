@@ -1,7 +1,171 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import { query } from "./_generated/server";
+import { mutation, query } from "./_generated/server";
 import { DAYS_MS } from "./lib/constants";
+
+// Helper to get midnight timestamp for a date
+function getMidnight(timestamp: number): number {
+  const date = new Date(timestamp);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+// Get the aggregated stats (fast O(1) read)
+export const getAggregatedStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const stats = await ctx.db.query("userStats").first();
+    const libraryItems = await ctx.db.query("userLibrary").collect();
+
+    // Count anime vs manga
+    const animeCount = libraryItems.filter(
+      (i) => i.mediaType === "ANIME",
+    ).length;
+    const mangaCount = libraryItems.filter(
+      (i) => i.mediaType === "MANGA",
+    ).length;
+
+    // Get today's comparisons from last7Days
+    const today = getMidnight(Date.now());
+    const todayEntry = stats?.last7Days.find((d) => d.date === today);
+    const todayComparisons = todayEntry?.count ?? 0;
+
+    // Calculate average comparisons per item
+    const averageComparisonsPerItem =
+      libraryItems.length > 0
+        ? Math.round(
+            libraryItems.reduce((sum, item) => sum + item.comparisonCount, 0) /
+              libraryItems.length,
+          )
+        : 0;
+
+    // Format last7Days with day names for the activity chart
+    const last7Days: { day: string; count: number }[] = [];
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today - i * DAYS_MS);
+      const dayStart = getMidnight(date.getTime());
+      const entry = stats?.last7Days.find((d) => d.date === dayStart);
+      const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
+      last7Days.push({ day: dayName, count: entry?.count ?? 0 });
+    }
+
+    return {
+      totalComparisons: stats?.totalComparisons ?? 0,
+      todayComparisons,
+      streak: stats?.currentStreak ?? 0,
+      longestStreak: stats?.longestStreak ?? 0,
+      streakDays: [],
+      animeCount,
+      mangaCount,
+      totalItems: libraryItems.length,
+      stability: 100,
+      last7Days,
+      tieCount: stats?.tieCount ?? 0,
+      averageComparisonsPerItem,
+    };
+  },
+});
+
+// Initialize or get the singleton stats document
+export const getOrInitializeStats = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const existing = await ctx.db.query("userStats").first();
+    if (existing) {
+      return existing;
+    }
+
+    // Initialize with empty stats
+    const now = Date.now();
+    const id = await ctx.db.insert("userStats", {
+      totalComparisons: 0,
+      tieCount: 0,
+      currentStreak: 0,
+      longestStreak: 0,
+      lastComparisonDate: undefined,
+      last7Days: [],
+      updatedAt: now,
+    });
+
+    return await ctx.db.get(id);
+  },
+});
+
+// Internal helper to update stats after a comparison
+export async function updateStatsAfterComparison(
+  ctx: { db: any },
+  isTie: boolean,
+) {
+  const now = Date.now();
+  const today = getMidnight(now);
+
+  const stats = await ctx.db.query("userStats").first();
+
+  if (!stats) {
+    // Initialize if doesn't exist
+    await ctx.db.insert("userStats", {
+      totalComparisons: 1,
+      tieCount: isTie ? 1 : 0,
+      currentStreak: 1,
+      longestStreak: 1,
+      lastComparisonDate: today,
+      last7Days: [{ date: today, count: 1 }],
+      updatedAt: now,
+    });
+    return;
+  }
+
+  // Calculate new streak
+  let newStreak = stats.currentStreak;
+  let newLongestStreak = stats.longestStreak;
+
+  if (stats.lastComparisonDate === today) {
+    // Same day, streak unchanged
+  } else if (stats.lastComparisonDate === today - DAYS_MS) {
+    // Yesterday, extend streak
+    newStreak = stats.currentStreak + 1;
+    newLongestStreak = Math.max(newLongestStreak, newStreak);
+  } else if (stats.lastComparisonDate === undefined) {
+    // First ever comparison
+    newStreak = 1;
+    newLongestStreak = Math.max(newLongestStreak, 1);
+  } else if (stats.lastComparisonDate < today - DAYS_MS) {
+    // Gap in activity, reset streak
+    newStreak = 1;
+  }
+
+  // Update last7Days array
+  let newLast7Days = [...stats.last7Days];
+  const todayIndex = newLast7Days.findIndex((d) => d.date === today);
+
+  if (todayIndex >= 0) {
+    // Today already exists, increment count
+    newLast7Days[todayIndex] = {
+      ...newLast7Days[todayIndex],
+      count: newLast7Days[todayIndex].count + 1,
+    };
+  } else {
+    // Add today
+    newLast7Days.push({ date: today, count: 1 });
+  }
+
+  // Keep only last 7 days
+  const sevenDaysAgo = today - 7 * DAYS_MS;
+  newLast7Days = newLast7Days.filter((d) => d.date >= sevenDaysAgo);
+
+  // Sort by date ascending
+  newLast7Days.sort((a, b) => a.date - b.date);
+
+  await ctx.db.patch(stats._id, {
+    totalComparisons: stats.totalComparisons + 1,
+    tieCount: isTie ? stats.tieCount + 1 : stats.tieCount,
+    currentStreak: newStreak,
+    longestStreak: newLongestStreak,
+    lastComparisonDate: today,
+    last7Days: newLast7Days,
+    updatedAt: now,
+  });
+}
 
 // Get comprehensive user stats
 export const getUserStats = query({

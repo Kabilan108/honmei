@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { DAYS_MS, NEW_ITEM_THRESHOLD } from "./lib/constants";
+import { updateStatsAfterComparison } from "./stats";
 
 // Calculate new Elo ratings
 function calculateElo(
@@ -117,6 +118,9 @@ export const recordComparison = mutation({
       createdAt: now,
     });
 
+    // Update aggregated stats
+    await updateStatsAfterComparison(ctx, false);
+
     return { winnerNew, loserNew };
   },
 });
@@ -165,6 +169,9 @@ export const recordTie = mutation({
       isTie: true,
       createdAt: now,
     });
+
+    // Update aggregated stats
+    await updateStatsAfterComparison(ctx, true);
 
     return { item1Rating: item1.eloRating, item2Rating: item2.eloRating };
   },
