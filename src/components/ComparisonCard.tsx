@@ -63,7 +63,10 @@ export function ComparisonCard({
             />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-xl font-bold mb-2 line-clamp-2">
+            <h3
+              className="text-xl font-bold mb-2 line-clamp-2"
+              title={item.mediaTitle}
+            >
               {item.mediaTitle}
             </h3>
             <div className="flex flex-wrap gap-1">

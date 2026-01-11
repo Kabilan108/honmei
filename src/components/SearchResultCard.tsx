@@ -77,11 +77,17 @@ export function SearchResultCard({
 
       <div className="flex-1 min-w-0 space-y-2">
         <div>
-          <h3 className="font-medium line-clamp-2">
+          <h3
+            className="font-medium line-clamp-2"
+            title={media.title.english || media.title.romaji}
+          >
             {media.title.english || media.title.romaji}
           </h3>
           {media.title.english && (
-            <p className="text-sm text-neutral-400 line-clamp-1">
+            <p
+              className="text-sm text-neutral-400 line-clamp-1"
+              title={media.title.romaji}
+            >
               {media.title.romaji}
             </p>
           )}
@@ -91,12 +97,12 @@ export function SearchResultCard({
           <Badge variant="secondary" className="text-xs">
             {media.type}
           </Badge>
-          {media.format && (
+          {media.format?.trim() && (
             <Badge variant="outline" className="text-xs">
               {media.format}
             </Badge>
           )}
-          {media.status && (
+          {media.status?.trim() && (
             <Badge variant="outline" className="text-xs">
               {media.status}
             </Badge>

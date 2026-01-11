@@ -199,7 +199,10 @@ export const LibraryCard = memo(function LibraryCard({
       {/* Card Content */}
       <div className="p-3 space-y-2">
         {/* Title */}
-        <h3 className="font-medium text-sm line-clamp-2 leading-tight">
+        <h3
+          className="font-medium text-sm line-clamp-2 leading-tight"
+          title={item.mediaTitle}
+        >
           {item.mediaTitle}
         </h3>
 
