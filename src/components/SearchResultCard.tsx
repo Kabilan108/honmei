@@ -3,13 +3,7 @@ import type { JSX } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AniListMedia } from "@/lib/anilist";
-
-type WatchStatus =
-  | "COMPLETED"
-  | "WATCHING"
-  | "PLAN_TO_WATCH"
-  | "DROPPED"
-  | "ON_HOLD";
+import type { WatchStatus } from "@/lib/status";
 
 interface SearchResultCardProps {
   media: AniListMedia;

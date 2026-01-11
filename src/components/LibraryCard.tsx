@@ -13,24 +13,23 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-
-type WatchStatus =
-  | "COMPLETED"
-  | "WATCHING"
-  | "PLAN_TO_WATCH"
-  | "DROPPED"
-  | "ON_HOLD";
+import {
+  getStatusLabel,
+  type MediaType,
+  STATUS_CONFIG,
+  STATUS_CYCLE,
+  type WatchStatus,
+} from "@/lib/status";
 
 interface LibraryItem {
   _id: string;
   eloRating: number;
   comparisonCount: number;
   watchStatus: WatchStatus;
-  // Denormalized media fields
   mediaTitle: string;
   mediaCoverImage: string;
   mediaGenres: string[];
-  mediaType: "ANIME" | "MANGA";
+  mediaType: MediaType;
 }
 
 interface LibraryCardProps {
@@ -42,53 +41,6 @@ interface LibraryCardProps {
   onClick?: () => void;
 }
 
-const STATUS_CYCLE: WatchStatus[] = [
-  "PLAN_TO_WATCH",
-  "WATCHING",
-  "COMPLETED",
-  "ON_HOLD",
-  "DROPPED",
-];
-
-const statusConfig: Record<
-  WatchStatus,
-  { label: string; mangaLabel?: string; className: string }
-> = {
-  COMPLETED: {
-    label: "Completed",
-    className: "bg-green-600/20 text-green-400 border-green-600/30",
-  },
-  WATCHING: {
-    label: "Watching",
-    mangaLabel: "Reading",
-    className: "bg-blue-600/20 text-blue-400 border-blue-600/30",
-  },
-  PLAN_TO_WATCH: {
-    label: "Plan to Watch",
-    mangaLabel: "Plan to Read",
-    className: "bg-yellow-600/20 text-yellow-400 border-yellow-600/30",
-  },
-  DROPPED: {
-    label: "Dropped",
-    className: "bg-red-600/20 text-red-400 border-red-600/30",
-  },
-  ON_HOLD: {
-    label: "On Hold",
-    className: "bg-orange-600/20 text-orange-400 border-orange-600/30",
-  },
-};
-
-function getStatusLabel(
-  status: WatchStatus,
-  mediaType: "ANIME" | "MANGA",
-): string {
-  const config = statusConfig[status];
-  if (mediaType === "MANGA" && config.mangaLabel) {
-    return config.mangaLabel;
-  }
-  return config.label;
-}
-
 export const LibraryCard = memo(function LibraryCard({
   item,
   rank,
@@ -97,16 +49,14 @@ export const LibraryCard = memo(function LibraryCard({
   onStatusChange,
   onClick,
 }: LibraryCardProps) {
-  // Calculate percentile score (0-10, inverted so #1 is 10.0)
   const calculateScore = (): string | null => {
     if (totalItems < 5) return null;
-    // rank 1 = 10.0, last rank = 0.0
     const score = ((totalItems - rank) / (totalItems - 1)) * 10;
     return score.toFixed(1);
   };
 
   const score = calculateScore();
-  const statusInfo = statusConfig[item.watchStatus];
+  const statusInfo = STATUS_CONFIG[item.watchStatus];
   const statusLabel = getStatusLabel(item.watchStatus, item.mediaType);
   const displayGenres = item.mediaGenres.slice(0, 2);
 
@@ -136,7 +86,6 @@ export const LibraryCard = memo(function LibraryCard({
       tabIndex={0}
       role="button"
     >
-      {/* Cover Image with Rank Overlay */}
       <div className="aspect-[2/3] bg-neutral-800 relative">
         <img
           src={item.mediaCoverImage}
@@ -145,12 +94,10 @@ export const LibraryCard = memo(function LibraryCard({
           className="w-full h-full object-cover"
         />
 
-        {/* Rank Badge - Top Left */}
         <div className="absolute top-0 left-0 bg-black/80 px-2 py-1 text-sm font-bold text-white">
           #{rank}
         </div>
 
-        {/* Score Badge - Top Right */}
         <div className="absolute top-0 right-0 bg-black/80 px-2 py-1 text-sm font-mono">
           {score !== null ? (
             <span className="text-primary">{score}</span>
@@ -159,7 +106,6 @@ export const LibraryCard = memo(function LibraryCard({
           )}
         </div>
 
-        {/* Remove Button - Always visible on mobile, hover on desktop */}
         {/* biome-ignore lint/a11y/noStaticElementInteractions: stop propagation wrapper for nested button */}
         {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard handled by nested button */}
         <div
@@ -198,9 +144,7 @@ export const LibraryCard = memo(function LibraryCard({
         </div>
       </div>
 
-      {/* Card Content */}
       <div className="p-3 flex flex-col h-[140px]">
-        {/* Title - fixed height for 2 lines */}
         <h3
           className="font-medium text-sm line-clamp-2 leading-tight max-h-[2.2rem] overflow-hidden"
           title={item.mediaTitle}
@@ -208,9 +152,7 @@ export const LibraryCard = memo(function LibraryCard({
           {item.mediaTitle}
         </h3>
 
-        {/* Bottom-pinned content */}
         <div className="mt-auto space-y-1.5">
-          {/* Status Badge - Clickable to cycle status */}
           <button
             type="button"
             onClick={handleStatusCycle}
@@ -224,7 +166,6 @@ export const LibraryCard = memo(function LibraryCard({
             </Badge>
           </button>
 
-          {/* Genre Tags */}
           {displayGenres.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {displayGenres.map((genre) => (
@@ -238,7 +179,6 @@ export const LibraryCard = memo(function LibraryCard({
             </div>
           )}
 
-          {/* Comparison Count */}
           <div className="text-[10px] text-neutral-500">
             {item.comparisonCount} comparisons
           </div>

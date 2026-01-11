@@ -31,7 +31,6 @@ export function HomePage() {
   const removeFromLibrary = useMutation((api as any).library.removeFromLibrary);
   const updateLibraryItem = useMutation(api.library.updateLibraryItem);
 
-  // Tab state with localStorage persistence
   const [activeTab, setActiveTab] = useState<MediaType>(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -42,27 +41,21 @@ export function HomePage() {
     return "ANIME";
   });
 
-  // Sort and filter state
   const [sortBy, setSortBy] = useState<SortOption>("elo");
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
-
-  // Detail sheet state
   const [selectedItemId, setSelectedItemId] =
     useState<Id<"userLibrary"> | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  // Persist tab selection
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, activeTab);
   }, [activeTab]);
 
-  // Reset genre filter when switching tabs
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional reset on tab change
   useEffect(() => {
     setSelectedGenres([]);
   }, [activeTab]);
 
-  // Filter items by media type
   const filteredByType = useMemo(() => {
     if (!library) return { anime: [], manga: [] };
     return {
@@ -71,11 +64,9 @@ export function HomePage() {
     };
   }, [library]);
 
-  // Get items for current tab
   const currentTabItems =
     activeTab === "ANIME" ? filteredByType.anime : filteredByType.manga;
 
-  // Get unique genres from current tab items
   const availableGenres = useMemo(() => {
     const genreSet = new Set<string>();
     currentTabItems.forEach((item: any) => {
@@ -86,7 +77,6 @@ export function HomePage() {
     return Array.from(genreSet).sort();
   }, [currentTabItems]);
 
-  // Filter by selected genres
   const filteredByGenre = useMemo(() => {
     if (selectedGenres.length === 0) return currentTabItems;
     return currentTabItems.filter((item: any) =>
@@ -94,7 +84,6 @@ export function HomePage() {
     );
   }, [currentTabItems, selectedGenres]);
 
-  // Pre-compute Elo ranks for all items (stable, not affected by current sort)
   const eloRankMap = useMemo(() => {
     const sortedByElo = [...currentTabItems].sort(
       (a: any, b: any) => b.eloRating - a.eloRating,
@@ -106,7 +95,6 @@ export function HomePage() {
     return rankMap;
   }, [currentTabItems]);
 
-  // Sort items for display
   const sortedItems = useMemo(() => {
     const items = [...filteredByGenre];
     switch (sortBy) {
@@ -154,7 +142,6 @@ export function HomePage() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
       <div>
         <h1 className="text-3xl font-bold">My Library</h1>
         <p className="text-neutral-400 mt-2">
@@ -162,7 +149,6 @@ export function HomePage() {
         </p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 border-b border-neutral-800">
         <button
           type="button"
@@ -194,11 +180,8 @@ export function HomePage() {
         </button>
       </div>
 
-      {/* Controls */}
       <div className="space-y-3 md:space-y-0">
-        {/* Dropdowns + Active Filters (inline on desktop, stacked on mobile) */}
         <div className="flex flex-wrap gap-3 items-center">
-          {/* Sort Dropdown */}
           <Select
             value={sortBy}
             onValueChange={(v) => setSortBy(v as SortOption)}
@@ -214,7 +197,6 @@ export function HomePage() {
             </SelectContent>
           </Select>
 
-          {/* Genre Filter Dropdown */}
           {availableGenres.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -254,7 +236,6 @@ export function HomePage() {
             </DropdownMenu>
           )}
 
-          {/* Active Filters - inline on desktop */}
           {selectedGenres.length > 0 && (
             <div className="hidden md:flex flex-wrap gap-1">
               {selectedGenres.map((genre) => (
@@ -271,7 +252,6 @@ export function HomePage() {
           )}
         </div>
 
-        {/* Active Filters - own row on mobile only */}
         {selectedGenres.length > 0 && (
           <div className="flex md:hidden flex-wrap gap-1">
             {selectedGenres.map((genre) => (
@@ -288,7 +268,6 @@ export function HomePage() {
         )}
       </div>
 
-      {/* Content */}
       {library === undefined ? (
         <LibraryGridSkeleton count={10} />
       ) : currentTabItems.length === 0 ? (
@@ -314,7 +293,6 @@ export function HomePage() {
         </div>
       ) : (
         <>
-          {/* Score Explanation */}
           {currentTabItems.length < 5 && (
             <div className="text-xs text-neutral-500 bg-neutral-900 p-3 border border-neutral-800">
               Add {5 - currentTabItems.length} more {activeTab.toLowerCase()} to
@@ -322,7 +300,6 @@ export function HomePage() {
             </div>
           )}
 
-          {/* Grid */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
             {sortedItems.map((item: any, index: number) => (
               <LibraryCard

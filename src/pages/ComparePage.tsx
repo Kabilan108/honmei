@@ -51,7 +51,6 @@ export function ComparePage() {
       setShowResults(true);
       setSessionCount((prev) => prev + 1);
 
-      // Auto-hide results after 2 seconds
       setTimeout(() => {
         setShowResults(false);
         setLastResult(null);
@@ -80,13 +79,10 @@ export function ComparePage() {
   };
 
   const handleSkip = () => {
-    // Just triggers a re-render to get a new pair
-    // We could add skip tracking later
     setShowResults(false);
     setLastResult(null);
   };
 
-  // Session complete
   if (sessionCount >= SESSION_LIMIT) {
     return (
       <div className="space-y-6 max-w-2xl mx-auto">
@@ -126,7 +122,6 @@ export function ComparePage() {
     );
   }
 
-  // Not enough items or no comparisons needed
   if (!pair || !pair.item1 || !pair.item2) {
     return (
       <div className="space-y-6 max-w-2xl mx-auto">
@@ -137,7 +132,6 @@ export function ComparePage() {
           </p>
         </div>
 
-        {/* Media type tabs */}
         <div className="flex gap-2 justify-center">
           {(["ANIME", "MANGA"] as const).map((type) => (
             <Button
@@ -168,7 +162,6 @@ export function ComparePage() {
 
   const { item1, item2 } = pair;
 
-  // Helper to get rating display
   const getRatingDisplay = (itemId: string, itemRating: number) => {
     if (!showResults || !lastResult) {
       return <span className="text-neutral-500">???</span>;
@@ -197,7 +190,6 @@ export function ComparePage() {
         <p className="text-neutral-400 mt-2">Which one do you prefer?</p>
       </div>
 
-      {/* Media type tabs */}
       <div className="flex gap-2 justify-center">
         {(["ANIME", "MANGA"] as const).map((type) => (
           <Button
@@ -211,7 +203,6 @@ export function ComparePage() {
         ))}
       </div>
 
-      {/* Session progress */}
       <div className="flex items-center justify-center gap-2 text-sm text-neutral-400">
         <span>
           Comparison {sessionCount + 1} of {SESSION_LIMIT}
@@ -245,7 +236,6 @@ export function ComparePage() {
         />
       </div>
 
-      {/* Action buttons */}
       <div className="flex items-center justify-center gap-4">
         <Button
           variant="outline"

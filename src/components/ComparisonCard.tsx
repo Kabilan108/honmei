@@ -32,7 +32,6 @@ export function ComparisonCard({
       disabled={disabled}
       className="bg-neutral-900 border-2 border-neutral-800 overflow-hidden hover:border-primary transition-all duration-200 disabled:opacity-50 text-left focus:outline-none focus:border-primary hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10 w-full"
     >
-      {/* Unified overlay design for mobile and desktop */}
       <div className="relative">
         <div className="aspect-[4/5] md:aspect-[3/4] bg-neutral-800 relative overflow-hidden">
           <img
@@ -43,7 +42,6 @@ export function ComparisonCard({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent" />
 
-          {/* Overlay content */}
           <div className="absolute bottom-0 left-0 right-0 p-4 md:p-6 space-y-2 md:space-y-3">
             <h3
               className="text-lg md:text-xl font-bold line-clamp-2 leading-tight"

@@ -22,59 +22,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useIsMobile } from "@/hooks/useMediaQuery";
+import { getStatusLabel, STATUS_CONFIG, type WatchStatus } from "@/lib/status";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-
-type WatchStatus =
-  | "COMPLETED"
-  | "WATCHING"
-  | "PLAN_TO_WATCH"
-  | "DROPPED"
-  | "ON_HOLD";
 
 interface MediaDetailSheetProps {
   libraryItemId: Id<"userLibrary"> | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}
-
-const statusConfig: Record<
-  WatchStatus,
-  { label: string; mangaLabel?: string; className: string }
-> = {
-  COMPLETED: {
-    label: "Completed",
-    className: "bg-green-600/20 text-green-400 border-green-600/30",
-  },
-  WATCHING: {
-    label: "Watching",
-    mangaLabel: "Reading",
-    className: "bg-blue-600/20 text-blue-400 border-blue-600/30",
-  },
-  PLAN_TO_WATCH: {
-    label: "Plan to Watch",
-    mangaLabel: "Plan to Read",
-    className: "bg-yellow-600/20 text-yellow-400 border-yellow-600/30",
-  },
-  DROPPED: {
-    label: "Dropped",
-    className: "bg-red-600/20 text-red-400 border-red-600/30",
-  },
-  ON_HOLD: {
-    label: "On Hold",
-    className: "bg-orange-600/20 text-orange-400 border-orange-600/30",
-  },
-};
-
-function getStatusLabel(
-  status: WatchStatus,
-  mediaType: "ANIME" | "MANGA",
-): string {
-  const config = statusConfig[status];
-  if (mediaType === "MANGA" && config.mangaLabel) {
-    return config.mangaLabel;
-  }
-  return config.label;
 }
 
 function formatDate(date?: {
@@ -168,8 +123,8 @@ export function MediaDetailSheet({
 
   const statusPicker = isMobile ? (
     <div className="flex flex-wrap gap-1.5">
-      {(Object.keys(statusConfig) as WatchStatus[]).map((status) => {
-        const config = statusConfig[status];
+      {(Object.keys(STATUS_CONFIG) as WatchStatus[]).map((status) => {
+        const config = STATUS_CONFIG[status];
         const isActive = libraryItem.watchStatus === status;
         return (
           <button
@@ -195,7 +150,7 @@ export function MediaDetailSheet({
         </SelectValue>
       </SelectTrigger>
       <SelectContent>
-        {(Object.keys(statusConfig) as WatchStatus[]).map((status) => (
+        {(Object.keys(STATUS_CONFIG) as WatchStatus[]).map((status) => (
           <SelectItem key={status} value={status}>
             {getStatusLabel(status, mediaType)}
           </SelectItem>
