@@ -28,18 +28,23 @@ import { decompressGzip, parseMALXml } from "@/lib/mal-xml-parser";
 import { api } from "../../convex/_generated/api";
 
 const ACCENT_COLORS = [
-  { name: "Orange", value: "24 95% 53%", class: "bg-orange-500" },
-  { name: "Blue", value: "217 91% 60%", class: "bg-blue-500" },
-  { name: "Green", value: "142 71% 45%", class: "bg-green-500" },
-  { name: "Purple", value: "262 83% 58%", class: "bg-purple-500" },
-  { name: "Pink", value: "330 81% 60%", class: "bg-pink-500" },
-  { name: "Red", value: "0 84% 60%", class: "bg-red-500" },
+  { name: "Orange", value: "hsl(24, 95%, 53%)", class: "bg-orange-500" },
+  { name: "Blue", value: "hsl(217, 91%, 60%)", class: "bg-blue-500" },
+  { name: "Green", value: "hsl(142, 71%, 45%)", class: "bg-green-500" },
+  { name: "Purple", value: "hsl(262, 83%, 58%)", class: "bg-purple-500" },
+  { name: "Pink", value: "hsl(330, 81%, 60%)", class: "bg-pink-500" },
+  { name: "Red", value: "hsl(0, 84%, 60%)", class: "bg-red-500" },
 ];
 
 export function SettingsPage() {
   // Theme state
   const [accentColor, setAccentColor] = useState(() => {
-    return localStorage.getItem("curator-accent") || "24 95% 53%";
+    const stored = localStorage.getItem("curator-accent");
+    // Handle legacy values without hsl() wrapper
+    if (stored && !stored.startsWith("hsl(")) {
+      return `hsl(${stored.replace(/\s+/g, ", ")})`;
+    }
+    return stored || "hsl(24, 95%, 53%)";
   });
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem("curator-theme") !== "light";
