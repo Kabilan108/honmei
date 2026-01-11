@@ -47,10 +47,14 @@ export default defineSchema({
         day: v.optional(v.number()),
       }),
     ),
+
+    // Franchise grouping (for multi-season series)
+    franchiseId: v.optional(v.string()),
   })
     .index("by_anilist_id", ["anilistId"])
     .index("by_mal_id", ["malId"])
-    .index("by_type", ["type"]),
+    .index("by_type", ["type"])
+    .index("by_franchise", ["franchiseId"]),
 
   // User's personal library - items they're tracking
   userLibrary: defineTable({
