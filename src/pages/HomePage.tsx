@@ -2,6 +2,7 @@ import { useMutation, useQuery } from "convex/react";
 import { ChevronDown, Filter } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { LibraryCard } from "@/components/LibraryCard";
+import { MediaDetailSheet } from "@/components/MediaDetailSheet";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -17,6 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { api } from "../../convex/_generated/api";
+import type { Id } from "../../convex/_generated/dataModel";
 
 type MediaType = "ANIME" | "MANGA";
 type SortOption = "elo" | "recent" | "alphabetical" | "comparisons";
@@ -41,6 +43,11 @@ export function HomePage() {
   // Sort and filter state
   const [sortBy, setSortBy] = useState<SortOption>("elo");
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+
+  // Detail sheet state
+  const [selectedItemId, setSelectedItemId] =
+    useState<Id<"userLibrary"> | null>(null);
+  const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
   // Persist tab selection
   useEffect(() => {
@@ -126,6 +133,11 @@ export function HomePage() {
 
   const clearGenres = useCallback(() => {
     setSelectedGenres([]);
+  }, []);
+
+  const openDetailSheet = useCallback((itemId: Id<"userLibrary">) => {
+    setSelectedItemId(itemId);
+    setDetailSheetOpen(true);
   }, []);
 
   return (
@@ -290,11 +302,18 @@ export function HomePage() {
                 }
                 totalItems={currentTabItems.length}
                 onRemove={removeFromLibrary}
+                onClick={() => openDetailSheet(item._id)}
               />
             ))}
           </div>
         </>
       )}
+
+      <MediaDetailSheet
+        libraryItemId={selectedItemId}
+        open={detailSheetOpen}
+        onOpenChange={setDetailSheetOpen}
+      />
     </div>
   );
 }

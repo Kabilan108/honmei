@@ -72,6 +72,23 @@ export const getById = query({
   },
 });
 
+// Get a single library item with full media details
+export const getByIdWithDetails = query({
+  args: { id: v.id("userLibrary") },
+  handler: async (ctx, args) => {
+    const libraryItem = await ctx.db.get(args.id);
+    if (!libraryItem) return null;
+
+    const mediaItem = await ctx.db.get(libraryItem.mediaItemId);
+    if (!mediaItem) return null;
+
+    return {
+      ...libraryItem,
+      media: mediaItem,
+    };
+  },
+});
+
 // Add a media item to the library
 export const addToLibrary = mutation({
   args: {

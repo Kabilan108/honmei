@@ -38,6 +38,7 @@ interface LibraryCardProps {
   rank: number;
   totalItems: number;
   onRemove: (args: { id: string }) => Promise<void>;
+  onClick?: () => void;
 }
 
 const statusConfig: Record<WatchStatus, { label: string; className: string }> =
@@ -69,6 +70,7 @@ export const LibraryCard = memo(function LibraryCard({
   rank,
   totalItems,
   onRemove,
+  onClick,
 }: LibraryCardProps) {
   // Calculate percentile score (0-10, inverted so #1 is 10.0)
   const calculateScore = (): string | null => {
@@ -87,7 +89,18 @@ export const LibraryCard = memo(function LibraryCard({
   };
 
   return (
-    <div className="bg-neutral-900 overflow-hidden border border-neutral-800 group relative">
+    <div
+      className="bg-neutral-900 overflow-hidden border border-neutral-800 group relative cursor-pointer transition-colors hover:border-neutral-700"
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
+      tabIndex={0}
+      role="button"
+    >
       {/* Cover Image with Rank Overlay */}
       <div className="aspect-[2/3] bg-neutral-800 relative">
         <img
@@ -112,7 +125,11 @@ export const LibraryCard = memo(function LibraryCard({
         </div>
 
         {/* Remove Button - Shows on Hover */}
-        <div className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span
+          className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <AlertDialog>
             <AlertDialogTrigger
               render={
@@ -142,7 +159,7 @@ export const LibraryCard = memo(function LibraryCard({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        </div>
+        </span>
       </div>
 
       {/* Card Content */}
