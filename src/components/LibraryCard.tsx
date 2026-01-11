@@ -167,14 +167,16 @@ export const LibraryCard = memo(function LibraryCard({
           onClick={(e) => e.stopPropagation()}
         >
           <AlertDialog>
-            <AlertDialogTrigger>
-              <Button
-                variant="destructive"
-                size="icon-xs"
-                className="bg-red-600/90 hover:bg-red-600 border-none"
-              >
-                <Trash2 className="size-3" />
-              </Button>
+            <AlertDialogTrigger
+              render={
+                <Button
+                  variant="destructive"
+                  size="icon-xs"
+                  className="bg-red-600/90 hover:bg-red-600 border-none"
+                />
+              }
+            >
+              <Trash2 className="size-3" />
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>

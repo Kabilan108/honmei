@@ -124,3 +124,36 @@ export const clearAllData = mutation({
     };
   },
 });
+
+// Reset all rankings to default (1500) and clear comparison history
+export const resetRankings = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // Delete all comparisons
+    const comparisons = await ctx.db.query("comparisons").collect();
+    for (const comparison of comparisons) {
+      await ctx.db.delete(comparison._id);
+    }
+
+    // Reset all library items to default Elo
+    const libraryItems = await ctx.db.query("userLibrary").collect();
+    for (const item of libraryItems) {
+      await ctx.db.patch(item._id, {
+        eloRating: 1500,
+        comparisonCount: 0,
+        lastComparedAt: undefined,
+        nextComparisonDue: undefined,
+        needsReranking: undefined,
+      });
+    }
+
+    console.log(
+      `Reset rankings: cleared ${comparisons.length} comparisons, reset ${libraryItems.length} items`,
+    );
+
+    return {
+      clearedComparisons: comparisons.length,
+      resetItems: libraryItems.length,
+    };
+  },
+});

@@ -64,6 +64,7 @@ export function SettingsPage() {
   const fullExport = useQuery((api as any).export?.getFullExport);
   const csvExport = useQuery((api as any).export?.getCsvExport);
   const clearAllData = useMutation((api as any).import?.clearAllData);
+  const resetRankings = useMutation((api as any).import?.resetRankings);
   const startImport = useMutation((api as any).importJobMutations?.startImport);
   const activeImport = useQuery(
     (api as any).importJobMutations?.getActiveImport,
@@ -454,14 +455,7 @@ export function SettingsPage() {
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     variant="destructive"
-                    onClick={async () => {
-                      try {
-                        const result = await clearAllData({});
-                        console.log("Cleared data:", result);
-                      } catch (error) {
-                        console.error("Failed to clear data:", error);
-                      }
-                    }}
+                    onClick={() => clearAllData({})}
                   >
                     Clear Everything
                   </AlertDialogAction>
@@ -494,7 +488,10 @@ export function SettingsPage() {
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction variant="destructive">
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={() => resetRankings({})}
+                  >
                     Reset Rankings
                   </AlertDialogAction>
                 </AlertDialogFooter>
