@@ -38,38 +38,63 @@ interface LibraryCardProps {
   rank: number;
   totalItems: number;
   onRemove: (args: { id: string }) => Promise<void>;
+  onStatusChange?: (args: { id: string; watchStatus: WatchStatus }) => void;
   onClick?: () => void;
 }
 
-const statusConfig: Record<WatchStatus, { label: string; className: string }> =
-  {
-    COMPLETED: {
-      label: "Completed",
-      className: "bg-green-600/20 text-green-400 border-green-600/30",
-    },
-    WATCHING: {
-      label: "Watching",
-      className: "bg-blue-600/20 text-blue-400 border-blue-600/30",
-    },
-    PLAN_TO_WATCH: {
-      label: "Plan to Watch",
-      className: "bg-yellow-600/20 text-yellow-400 border-yellow-600/30",
-    },
-    DROPPED: {
-      label: "Dropped",
-      className: "bg-red-600/20 text-red-400 border-red-600/30",
-    },
-    ON_HOLD: {
-      label: "On Hold",
-      className: "bg-orange-600/20 text-orange-400 border-orange-600/30",
-    },
-  };
+const STATUS_CYCLE: WatchStatus[] = [
+  "COMPLETED",
+  "WATCHING",
+  "PLAN_TO_WATCH",
+  "ON_HOLD",
+  "DROPPED",
+];
+
+const statusConfig: Record<
+  WatchStatus,
+  { label: string; mangaLabel?: string; className: string }
+> = {
+  COMPLETED: {
+    label: "Completed",
+    className: "bg-green-600/20 text-green-400 border-green-600/30",
+  },
+  WATCHING: {
+    label: "Watching",
+    mangaLabel: "Reading",
+    className: "bg-blue-600/20 text-blue-400 border-blue-600/30",
+  },
+  PLAN_TO_WATCH: {
+    label: "Plan to Watch",
+    mangaLabel: "Plan to Read",
+    className: "bg-yellow-600/20 text-yellow-400 border-yellow-600/30",
+  },
+  DROPPED: {
+    label: "Dropped",
+    className: "bg-red-600/20 text-red-400 border-red-600/30",
+  },
+  ON_HOLD: {
+    label: "On Hold",
+    className: "bg-orange-600/20 text-orange-400 border-orange-600/30",
+  },
+};
+
+function getStatusLabel(
+  status: WatchStatus,
+  mediaType: "ANIME" | "MANGA",
+): string {
+  const config = statusConfig[status];
+  if (mediaType === "MANGA" && config.mangaLabel) {
+    return config.mangaLabel;
+  }
+  return config.label;
+}
 
 export const LibraryCard = memo(function LibraryCard({
   item,
   rank,
   totalItems,
   onRemove,
+  onStatusChange,
   onClick,
 }: LibraryCardProps) {
   // Calculate percentile score (0-10, inverted so #1 is 10.0)
@@ -82,10 +107,19 @@ export const LibraryCard = memo(function LibraryCard({
 
   const score = calculateScore();
   const statusInfo = statusConfig[item.watchStatus];
+  const statusLabel = getStatusLabel(item.watchStatus, item.mediaType);
   const displayGenres = item.mediaGenres.slice(0, 2);
 
   const handleRemove = () => {
     onRemove({ id: item._id });
+  };
+
+  const handleStatusCycle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!onStatusChange) return;
+    const currentIndex = STATUS_CYCLE.indexOf(item.watchStatus);
+    const nextIndex = (currentIndex + 1) % STATUS_CYCLE.length;
+    onStatusChange({ id: item._id, watchStatus: STATUS_CYCLE[nextIndex] });
   };
 
   return (
@@ -169,13 +203,15 @@ export const LibraryCard = memo(function LibraryCard({
           {item.mediaTitle}
         </h3>
 
-        {/* Status Badge */}
-        <Badge
-          variant="outline"
-          className={`text-[10px] px-1.5 py-0 h-4 ${statusInfo.className}`}
-        >
-          {statusInfo.label}
-        </Badge>
+        {/* Status Badge - Clickable to cycle status */}
+        <button type="button" onClick={handleStatusCycle} className="text-left">
+          <Badge
+            variant="outline"
+            className={`text-[10px] px-1.5 py-0 h-4 cursor-pointer hover:opacity-80 transition-opacity ${statusInfo.className}`}
+          >
+            {statusLabel}
+          </Badge>
+        </button>
 
         {/* Genre Tags */}
         {displayGenres.length > 0 && (

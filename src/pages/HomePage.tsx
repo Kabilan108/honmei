@@ -28,6 +28,7 @@ const STORAGE_KEY = "curator-library-tab";
 export function HomePage() {
   const library = useQuery((api as any).library?.getByElo);
   const removeFromLibrary = useMutation((api as any).library.removeFromLibrary);
+  const updateLibraryItem = useMutation(api.library.updateLibraryItem);
 
   // Tab state with localStorage persistence
   const [activeTab, setActiveTab] = useState<MediaType>(() => {
@@ -139,6 +140,16 @@ export function HomePage() {
     setSelectedItemId(itemId);
     setDetailSheetOpen(true);
   }, []);
+
+  const handleStatusChange = useCallback(
+    (args: { id: string; watchStatus: string }) => {
+      updateLibraryItem({
+        id: args.id as Id<"userLibrary">,
+        watchStatus: args.watchStatus as any,
+      });
+    },
+    [updateLibraryItem],
+  );
 
   return (
     <div className="space-y-6">
@@ -302,6 +313,7 @@ export function HomePage() {
                 }
                 totalItems={currentTabItems.length}
                 onRemove={removeFromLibrary}
+                onStatusChange={handleStatusChange}
                 onClick={() => openDetailSheet(item._id)}
               />
             ))}
