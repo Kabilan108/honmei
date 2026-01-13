@@ -1,7 +1,13 @@
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { mutation } from "./_generated/server";
-import { malScoreToElo, malStatusToWatchStatus } from "./lib/malUtils";
+import {
+  GLICKO_DEFAULT_RATING,
+  GLICKO_DEFAULT_RD,
+  GLICKO_DEFAULT_VOLATILITY,
+} from "./lib/constants";
+import { malScoreToRating, malStatusToWatchStatus } from "./lib/malUtils";
+import { updateStatsOnLibraryChange } from "./stats";
 
 // Import a single item from MAL data
 export const importMalItem = mutation({
@@ -55,9 +61,9 @@ export const importMalItem = mutation({
       return { skipped: true, mediaItemId };
     }
 
-    // Add to library with mapped Elo
+    // Add to library with mapped rating
     const now = Date.now();
-    const eloRating = malScoreToElo(args.malScore ?? null);
+    const rating = malScoreToRating(args.malScore ?? null);
     const watchStatus = malStatusToWatchStatus(args.malStatus);
 
     await ctx.db.insert("userLibrary", {
@@ -68,16 +74,23 @@ export const importMalItem = mutation({
       mediaBannerImage: undefined,
       mediaType: args.type,
       mediaGenres: args.genres,
-      // Elo fields
-      eloRating,
+      // Glicko-2 fields
+      rating,
+      rd: GLICKO_DEFAULT_RD,
+      volatility: GLICKO_DEFAULT_VOLATILITY,
       comparisonCount: 0,
+      totalWins: 0,
+      totalLosses: 0,
+      totalTies: 0,
       customTags: [],
       watchStatus,
       addedAt: now,
       updatedAt: now,
     });
 
-    return { skipped: false, mediaItemId, eloRating };
+    await updateStatsOnLibraryChange(ctx, args.type, GLICKO_DEFAULT_RD, "add");
+
+    return { skipped: false, mediaItemId, rating };
   },
 });
 
@@ -105,6 +118,12 @@ export const clearAllData = mutation({
       await ctx.db.delete(comparison._id);
     }
 
+    // Delete all comparison pairs
+    const comparisonPairs = await ctx.db.query("comparisonPairs").collect();
+    for (const pair of comparisonPairs) {
+      await ctx.db.delete(pair._id);
+    }
+
     // Delete all library items
     const libraryItems = await ctx.db.query("userLibrary").collect();
     for (const item of libraryItems) {
@@ -117,15 +136,32 @@ export const clearAllData = mutation({
       await ctx.db.delete(item._id);
     }
 
+    // Reset userStats
+    const stats = await ctx.db.query("userStats").first();
+    if (stats) {
+      await ctx.db.patch(stats._id, {
+        totalComparisons: 0,
+        tieCount: 0,
+        animeCount: 0,
+        mangaCount: 0,
+        rankedAnimeCount: 0,
+        rankedMangaCount: 0,
+        currentStreak: 0,
+        last7Days: [],
+        updatedAt: Date.now(),
+      });
+    }
+
     return {
       deletedComparisons: comparisons.length,
+      deletedComparisonPairs: comparisonPairs.length,
       deletedLibraryItems: libraryItems.length,
       deletedMediaItems: mediaItems.length,
     };
   },
 });
 
-// Reset all rankings to default (1500) and clear comparison history
+// Reset all rankings to default and clear comparison history
 export const resetRankings = mutation({
   args: {},
   handler: async (ctx) => {
@@ -135,12 +171,23 @@ export const resetRankings = mutation({
       await ctx.db.delete(comparison._id);
     }
 
-    // Reset all library items to default Elo
+    // Delete all comparison pairs
+    const comparisonPairs = await ctx.db.query("comparisonPairs").collect();
+    for (const pair of comparisonPairs) {
+      await ctx.db.delete(pair._id);
+    }
+
+    // Reset all library items to default Glicko-2 values
     const libraryItems = await ctx.db.query("userLibrary").collect();
     for (const item of libraryItems) {
       await ctx.db.patch(item._id, {
-        eloRating: 1500,
+        rating: GLICKO_DEFAULT_RATING,
+        rd: GLICKO_DEFAULT_RD,
+        volatility: GLICKO_DEFAULT_VOLATILITY,
         comparisonCount: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalTies: 0,
         lastComparedAt: undefined,
         nextComparisonDue: undefined,
         needsReranking: undefined,
@@ -148,11 +195,12 @@ export const resetRankings = mutation({
     }
 
     console.log(
-      `Reset rankings: cleared ${comparisons.length} comparisons, reset ${libraryItems.length} items`,
+      `Reset rankings: cleared ${comparisons.length} comparisons, ${comparisonPairs.length} pairs, reset ${libraryItems.length} items`,
     );
 
     return {
       clearedComparisons: comparisons.length,
+      clearedPairs: comparisonPairs.length,
       resetItems: libraryItems.length,
     };
   },

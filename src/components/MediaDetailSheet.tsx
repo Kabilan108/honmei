@@ -199,8 +199,12 @@ export function MediaDetailSheet({
 
       <div className="grid grid-cols-2 gap-3 text-xs">
         <div>
-          <span className="text-foreground-subtle">Elo Rating</span>
-          <p className="font-mono text-primary">{libraryItem.eloRating}</p>
+          <span className="text-foreground-subtle">Rating</span>
+          <p className="font-mono text-primary">{libraryItem.rating}</p>
+        </div>
+        <div>
+          <span className="text-foreground-subtle">Confidence (RD)</span>
+          <p className="font-mono">{libraryItem.rd}</p>
         </div>
         <div>
           <span className="text-foreground-subtle">Comparisons</span>

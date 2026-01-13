@@ -13,6 +13,16 @@ bun run preview  # Preview production build
 
 Start Convex separately with `npx convex dev` if not running through dev script.
 
+## Dev Server Setup
+
+Use the /tmux skill to start both dev servers in side-by-side panes:
+
+1. Create a 'servers' window in the current tmux session with vertical split
+2. Run `bun run dev` in the left pane (Vite dev server)
+3. Run `bunx convex dev` in the right pane (Convex backend)
+
+When the Chrome browser MCP tool is available, use it to view the app at http://localhost:5173 and take screenshots to verify UI changes as you work.
+
 ## Architecture
 
 **Curator** is an anime/manga library tracker with Elo-based ranking through pairwise comparisons.

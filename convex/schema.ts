@@ -60,6 +60,9 @@ export default defineSchema({
   userLibrary: defineTable({
     mediaItemId: v.id("mediaItems"),
 
+    // Multi-user support (nullable until auth implemented)
+    userId: v.optional(v.string()),
+
     // Denormalized from mediaItems for query performance
     mediaTitle: v.string(),
     mediaCoverImage: v.string(),
@@ -67,9 +70,16 @@ export default defineSchema({
     mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
     mediaGenres: v.array(v.string()),
 
-    // Elo ranking system
-    eloRating: v.number(), // Default: 1500
-    comparisonCount: v.number(), // Default: 0
+    // Glicko-2 rating system
+    rating: v.number(), // Glicko-2 rating (default: 1500)
+    rd: v.number(), // Rating Deviation (default: 350)
+    volatility: v.number(), // Volatility σ (default: 0.06)
+
+    // Comparison statistics (denormalized for O(1) access)
+    comparisonCount: v.number(),
+    totalWins: v.number(),
+    totalLosses: v.number(),
+    totalTies: v.number(),
 
     // User's custom tags
     customTags: v.array(v.string()),
@@ -99,14 +109,20 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index("by_media_item", ["mediaItemId"])
-    .index("by_elo_rating", ["eloRating"])
+    .index("by_rating", ["rating"])
+    .index("by_rd", ["rd"])
     .index("by_watch_status", ["watchStatus"])
     .index("by_added_at", ["addedAt"])
     .index("by_next_comparison", ["nextComparisonDue"])
-    .index("by_media_type", ["mediaType"]),
+    .index("by_media_type", ["mediaType"])
+    .index("by_media_type_and_rd", ["mediaType", "rd"])
+    .index("by_user", ["userId"]),
 
-  // Comparison history for Elo calculations
+  // Comparison history for rating calculations
   comparisons: defineTable({
+    // Multi-user support (nullable until auth implemented)
+    userId: v.optional(v.string()),
+
     winnerId: v.id("userLibrary"),
     loserId: v.id("userLibrary"),
     isTie: v.optional(v.boolean()), // True if user couldn't decide
@@ -114,7 +130,27 @@ export default defineSchema({
   })
     .index("by_winner", ["winnerId"])
     .index("by_loser", ["loserId"])
-    .index("by_created_at", ["createdAt"]),
+    .index("by_created_at", ["createdAt"])
+    .index("by_user", ["userId"]),
+
+  // Track comparison pairs for duplicate prevention
+  comparisonPairs: defineTable({
+    // Multi-user support (nullable until auth implemented)
+    userId: v.optional(v.string()),
+
+    // Items are stored with itemA._id < itemB._id for consistent lookup
+    itemA: v.id("userLibrary"),
+    itemB: v.id("userLibrary"),
+
+    // How many times this pair has been compared
+    comparisonCount: v.number(),
+
+    // When this pair was last compared
+    lastComparedAt: v.number(),
+  })
+    .index("by_items", ["itemA", "itemB"])
+    .index("by_user", ["userId"])
+    .index("by_last_compared", ["lastComparedAt"]),
 
   // Custom fields definition
   customFields: defineTable({
@@ -151,12 +187,25 @@ export default defineSchema({
 
   // Aggregated user stats - singleton table for O(1) stats reads
   userStats: defineTable({
+    // Multi-user support (nullable until auth implemented)
+    userId: v.optional(v.string()),
+
+    // Comparison stats
     totalComparisons: v.number(),
     tieCount: v.number(),
+
+    // Library counts (to avoid O(n) scans) - optional during migration
+    animeCount: v.optional(v.number()),
+    mangaCount: v.optional(v.number()),
+    rankedAnimeCount: v.optional(v.number()), // Items with RD <= threshold
+    rankedMangaCount: v.optional(v.number()),
+
+    // Streak tracking
     currentStreak: v.number(),
     longestStreak: v.number(),
     // Last comparison date (midnight timestamp) for streak tracking
     lastComparisonDate: v.optional(v.number()),
+
     // Rolling 7-day window for activity chart
     last7Days: v.array(
       v.object({
@@ -165,7 +214,7 @@ export default defineSchema({
       }),
     ),
     updatedAt: v.number(),
-  }),
+  }).index("by_user", ["userId"]),
 
   // Import jobs for tracking MAL import progress
   importJobs: defineTable({

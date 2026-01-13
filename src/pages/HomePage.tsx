@@ -1,6 +1,7 @@
 import { useMutation, useQuery } from "convex/react";
-import { ChevronDown, Filter } from "lucide-react";
+import { ChevronDown, Filter, GitCompare } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { LibraryCard } from "@/components/LibraryCard";
 import { LibraryGridSkeleton } from "@/components/LibraryCardSkeleton";
 import { MediaDetailSheet } from "@/components/MediaDetailSheet";
@@ -18,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { RD_CONFIDENCE_THRESHOLD } from "@/lib/constants";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -27,7 +29,7 @@ type SortOption = "elo" | "recent" | "alphabetical" | "comparisons";
 const STORAGE_KEY = "curator-library-tab";
 
 export function HomePage() {
-  const library = useQuery((api as any).library?.getByElo);
+  const library = useQuery((api as any).library?.getByRating);
   const removeFromLibrary = useMutation((api as any).library.removeFromLibrary);
   const updateLibraryItem = useMutation(api.library.updateLibraryItem);
 
@@ -67,6 +69,16 @@ export function HomePage() {
   const currentTabItems =
     activeTab === "ANIME" ? filteredByType.anime : filteredByType.manga;
 
+  const { rankedItems, unrankedItems } = useMemo(() => {
+    const ranked = currentTabItems.filter(
+      (item: any) => item.rd <= RD_CONFIDENCE_THRESHOLD,
+    );
+    const unranked = currentTabItems.filter(
+      (item: any) => item.rd > RD_CONFIDENCE_THRESHOLD,
+    );
+    return { rankedItems: ranked, unrankedItems: unranked };
+  }, [currentTabItems]);
+
   const availableGenres = useMemo(() => {
     const genreSet = new Set<string>();
     currentTabItems.forEach((item: any) => {
@@ -78,42 +90,60 @@ export function HomePage() {
   }, [currentTabItems]);
 
   const filteredByGenre = useMemo(() => {
-    if (selectedGenres.length === 0) return currentTabItems;
-    return currentTabItems.filter((item: any) =>
-      selectedGenres.some((genre) => item.mediaGenres?.includes(genre)),
-    );
-  }, [currentTabItems, selectedGenres]);
+    if (selectedGenres.length === 0)
+      return { ranked: rankedItems, unranked: unrankedItems };
+    const filterFn = (item: any) =>
+      selectedGenres.some((genre) => item.mediaGenres?.includes(genre));
+    return {
+      ranked: rankedItems.filter(filterFn),
+      unranked: unrankedItems.filter(filterFn),
+    };
+  }, [rankedItems, unrankedItems, selectedGenres]);
 
-  const eloRankMap = useMemo(() => {
-    const sortedByElo = [...currentTabItems].sort(
-      (a: any, b: any) => b.eloRating - a.eloRating,
+  const ratingRankMap = useMemo(() => {
+    const sortedByRating = [...rankedItems].sort(
+      (a: any, b: any) => b.rating - a.rating,
     );
     const rankMap = new Map<string, number>();
-    sortedByElo.forEach((item: any, index: number) => {
+    sortedByRating.forEach((item: any, index: number) => {
       rankMap.set(item._id, index + 1);
     });
     return rankMap;
-  }, [currentTabItems]);
+  }, [rankedItems]);
 
-  const sortedItems = useMemo(() => {
-    const items = [...filteredByGenre];
-    switch (sortBy) {
-      case "elo":
-        return items.sort((a: any, b: any) => b.eloRating - a.eloRating);
-      case "recent":
-        return items.sort((a: any, b: any) => b.addedAt - a.addedAt);
-      case "alphabetical":
-        return items.sort((a: any, b: any) =>
-          (a.mediaTitle || "").localeCompare(b.mediaTitle || ""),
-        );
-      case "comparisons":
-        return items.sort(
-          (a: any, b: any) => b.comparisonCount - a.comparisonCount,
-        );
-      default:
-        return items;
-    }
-  }, [filteredByGenre, sortBy]);
+  const sortItems = useCallback(
+    (items: any[]) => {
+      const sorted = [...items];
+      switch (sortBy) {
+        case "elo":
+          return sorted.sort((a: any, b: any) => b.rating - a.rating);
+        case "recent":
+          return sorted.sort((a: any, b: any) => b.addedAt - a.addedAt);
+        case "alphabetical":
+          return sorted.sort((a: any, b: any) =>
+            (a.mediaTitle || "").localeCompare(b.mediaTitle || ""),
+          );
+        case "comparisons":
+          return sorted.sort(
+            (a: any, b: any) => b.comparisonCount - a.comparisonCount,
+          );
+        default:
+          return sorted;
+      }
+    },
+    [sortBy],
+  );
+
+  const sortedRankedItems = useMemo(
+    () => sortItems(filteredByGenre.ranked),
+    [sortItems, filteredByGenre.ranked],
+  );
+
+  const sortedUnrankedItems = useMemo(() => {
+    const items = [...filteredByGenre.unranked];
+    // Always sort unranked by RD ascending (closest to ranked first)
+    return items.sort((a: any, b: any) => a.rd - b.rd);
+  }, [filteredByGenre.unranked]);
 
   const toggleGenre = useCallback((genre: string) => {
     setSelectedGenres((prev) =>
@@ -139,6 +169,11 @@ export function HomePage() {
     },
     [updateLibraryItem],
   );
+
+  const totalItems = currentTabItems.length;
+  const hasUnrankedItems = unrankedItems.length > 0;
+  const hasNoResults =
+    sortedRankedItems.length === 0 && sortedUnrankedItems.length === 0;
 
   return (
     <div className="space-y-6">
@@ -268,9 +303,28 @@ export function HomePage() {
         )}
       </div>
 
+      {/* CTA for unranked items */}
+      {hasUnrankedItems && (
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-foreground-muted">
+            <span className="font-medium text-foreground">
+              {unrankedItems.length}
+            </span>{" "}
+            {unrankedItems.length === 1 ? "item needs" : "items need"} more
+            comparisons
+          </p>
+          <Link to="/compare">
+            <Button variant="outline" size="sm" className="gap-1.5">
+              <GitCompare className="size-3.5" />
+              Compare
+            </Button>
+          </Link>
+        </div>
+      )}
+
       {library === undefined ? (
         <LibraryGridSkeleton count={10} />
-      ) : currentTabItems.length === 0 ? (
+      ) : totalItems === 0 ? (
         <div className="text-center py-12">
           <p className="text-foreground-muted mb-4">
             No {activeTab.toLowerCase()} in your library yet
@@ -280,7 +334,7 @@ export function HomePage() {
             started!
           </p>
         </div>
-      ) : sortedItems.length === 0 ? (
+      ) : hasNoResults ? (
         <div className="text-center py-12">
           <p className="text-foreground-muted mb-4">
             No items match your filters
@@ -294,30 +348,57 @@ export function HomePage() {
           </button>
         </div>
       ) : (
-        <>
-          {currentTabItems.length < 5 && (
+        <div className="space-y-6">
+          {totalItems < 5 && (
             <div className="text-xs text-foreground-subtle bg-surface p-3 border border-border">
-              Add {5 - currentTabItems.length} more {activeTab.toLowerCase()} to
-              see ranking scores. Scores require at least 5 items.
+              Add {5 - totalItems} more {activeTab.toLowerCase()} to see ranking
+              scores. Scores require at least 5 items.
             </div>
           )}
 
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {sortedItems.map((item: any, index: number) => (
-              <LibraryCard
-                key={item._id}
-                item={item}
-                rank={
-                  sortBy === "elo" ? index + 1 : (eloRankMap.get(item._id) ?? 0)
-                }
-                totalItems={currentTabItems.length}
-                onRemove={removeFromLibrary}
-                onStatusChange={handleStatusChange}
-                onClick={() => openDetailSheet(item._id)}
-              />
-            ))}
-          </div>
-        </>
+          {/* Ranked items grid */}
+          {sortedRankedItems.length > 0 && (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+              {sortedRankedItems.map((item: any, index: number) => (
+                <LibraryCard
+                  key={item._id}
+                  item={item}
+                  rank={
+                    sortBy === "elo"
+                      ? index + 1
+                      : (ratingRankMap.get(item._id) ?? 0)
+                  }
+                  totalItems={rankedItems.length}
+                  onRemove={removeFromLibrary}
+                  onStatusChange={handleStatusChange}
+                  onClick={() => openDetailSheet(item._id)}
+                />
+              ))}
+            </div>
+          )}
+
+          {/* Separator and unranked items */}
+          {sortedUnrankedItems.length > 0 && (
+            <>
+              {sortedRankedItems.length > 0 && (
+                <hr className="border-border/50" />
+              )}
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                {sortedUnrankedItems.map((item: any) => (
+                  <LibraryCard
+                    key={item._id}
+                    item={item}
+                    totalItems={rankedItems.length}
+                    onRemove={removeFromLibrary}
+                    onStatusChange={handleStatusChange}
+                    onClick={() => openDetailSheet(item._id)}
+                    isUnranked
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
       )}
 
       <MediaDetailSheet

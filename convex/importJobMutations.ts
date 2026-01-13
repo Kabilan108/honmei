@@ -7,8 +7,10 @@ import {
   mutation,
   query,
 } from "./_generated/server";
+import { GLICKO_DEFAULT_RD, GLICKO_DEFAULT_VOLATILITY } from "./lib/constants";
 import { importLogger } from "./lib/logger";
-import { malScoreToElo, malStatusToWatchStatus } from "./lib/malUtils";
+import { malScoreToRating, malStatusToWatchStatus } from "./lib/malUtils";
+import { updateStatsOnLibraryChange } from "./stats";
 
 export const startImport = mutation({
   args: {
@@ -196,7 +198,7 @@ export const importSingleItem = internalMutation({
       }
 
       const now = Date.now();
-      const eloRating = malScoreToElo(item.score);
+      const rating = malScoreToRating(item.score);
       const watchStatus = malStatusToWatchStatus(item.malStatus);
 
       // Get cover image and title for denormalized fields (prefer English title)
@@ -215,14 +217,26 @@ export const importSingleItem = internalMutation({
         mediaBannerImage: anilistData?.bannerImage,
         mediaType: item.type,
         mediaGenres: genres,
-        // Elo fields
-        eloRating,
+        // Glicko-2 fields
+        rating,
+        rd: GLICKO_DEFAULT_RD,
+        volatility: GLICKO_DEFAULT_VOLATILITY,
         comparisonCount: 0,
+        totalWins: 0,
+        totalLosses: 0,
+        totalTies: 0,
         customTags: [],
         watchStatus,
         addedAt: now,
         updatedAt: now,
       });
+
+      await updateStatsOnLibraryChange(
+        ctx,
+        item.type,
+        GLICKO_DEFAULT_RD,
+        "add",
+      );
 
       return { success: true, skipped: false };
     } catch (error) {

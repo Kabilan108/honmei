@@ -1,3 +1,4 @@
+import { useQuery } from "convex/react";
 import {
   GitCompare,
   Home,
@@ -6,6 +7,7 @@ import {
   Search,
   Settings,
 } from "lucide-react";
+import { useMemo } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import {
   Tooltip,
@@ -13,17 +15,22 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSidebar } from "@/hooks/useSidebar";
+import { RD_CONFIDENCE_THRESHOLD } from "@/lib/constants";
 import { cn } from "@/lib/utils";
+import { api } from "../../../convex/_generated/api";
+
+const UNRANKED_NOTIFICATION_THRESHOLD = 3;
 
 const navItems = [
   { path: "/", icon: Home, label: "Library" },
   { path: "/search", icon: Search, label: "Search" },
-  { path: "/compare", icon: GitCompare, label: "Compare" },
+  { path: "/compare", icon: GitCompare, label: "Compare", showBadge: true },
   { path: "/settings", icon: Settings, label: "Settings" },
 ];
 
-function BottomNav() {
+function BottomNav({ unrankedCount }: { unrankedCount: number }) {
   const location = useLocation();
+  const showBadge = unrankedCount >= UNRANKED_NOTIFICATION_THRESHOLD;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 bg-surface border-t border-border safe-area-inset-bottom md:hidden z-50">
@@ -37,13 +44,18 @@ function BottomNav() {
               key={item.path}
               to={item.path}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-lg transition-colors flex-1",
+                "flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-lg transition-colors flex-1 relative",
                 isActive
                   ? "text-primary"
                   : "text-foreground-muted hover:text-foreground",
               )}
             >
-              <Icon className="w-6 h-6" />
+              <div className="relative">
+                <Icon className="w-6 h-6" />
+                {item.showBadge && showBadge && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-amber-500 rounded-full" />
+                )}
+              </div>
               <span className="text-xs font-medium">{item.label}</span>
             </Link>
           );
@@ -59,6 +71,7 @@ interface NavItemProps {
   label: string;
   isActive: boolean;
   isCollapsed: boolean;
+  showBadge?: boolean;
 }
 
 function NavItem({
@@ -67,6 +80,7 @@ function NavItem({
   label,
   isActive,
   isCollapsed,
+  showBadge,
 }: NavItemProps) {
   const linkContent = (
     <Link
@@ -79,7 +93,12 @@ function NavItem({
           : "text-foreground-muted hover:bg-surface-raised hover:text-foreground",
       )}
     >
-      <Icon className="w-5 h-5 shrink-0" />
+      <div className="relative">
+        <Icon className="w-5 h-5 shrink-0" />
+        {showBadge && (
+          <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-amber-500 rounded-full" />
+        )}
+      </div>
       {!isCollapsed && <span className="text-sm font-medium">{label}</span>}
     </Link>
   );
@@ -96,9 +115,10 @@ function NavItem({
   return linkContent;
 }
 
-function Sidebar() {
+function Sidebar({ unrankedCount }: { unrankedCount: number }) {
   const location = useLocation();
   const { isCollapsed, toggle } = useSidebar();
+  const showBadge = unrankedCount >= UNRANKED_NOTIFICATION_THRESHOLD;
 
   const toggleButton = (
     <button
@@ -154,6 +174,7 @@ function Sidebar() {
             label={item.label}
             isActive={location.pathname === item.path}
             isCollapsed={isCollapsed}
+            showBadge={item.showBadge && showBadge}
           />
         ))}
       </nav>
@@ -179,10 +200,17 @@ function Sidebar() {
 
 export function Layout() {
   const { isCollapsed } = useSidebar();
+  const library = useQuery((api as any).library?.getByRating);
+
+  const unrankedCount = useMemo(() => {
+    if (!library) return 0;
+    return library.filter((item: any) => item.rd > RD_CONFIDENCE_THRESHOLD)
+      .length;
+  }, [library]);
 
   return (
     <div className="min-h-screen bg-background text-foreground">
-      <Sidebar />
+      <Sidebar unrankedCount={unrankedCount} />
 
       <main
         className={cn(
@@ -195,7 +223,7 @@ export function Layout() {
         </div>
       </main>
 
-      <BottomNav />
+      <BottomNav unrankedCount={unrankedCount} />
     </div>
   );
 }

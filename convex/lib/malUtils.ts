@@ -5,7 +5,7 @@ export type WatchStatus =
   | "DROPPED"
   | "ON_HOLD";
 
-export function malScoreToElo(malScore: number | null): number {
+export function malScoreToRating(malScore: number | null): number {
   if (!malScore || malScore === 0) return 1500;
   return 900 + (malScore - 1) * 100;
 }

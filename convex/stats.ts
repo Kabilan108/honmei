@@ -1,45 +1,24 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
+import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
-import { DAYS_MS } from "./lib/constants";
+import { DAYS_MS, RD_CONFIDENCE_THRESHOLD } from "./lib/constants";
 
-// Helper to get midnight timestamp for a date
 function getMidnight(timestamp: number): number {
   const date = new Date(timestamp);
   date.setHours(0, 0, 0, 0);
   return date.getTime();
 }
 
-// Get the aggregated stats (fast O(1) read)
 export const getAggregatedStats = query({
   args: {},
   handler: async (ctx) => {
     const stats = await ctx.db.query("userStats").first();
-    const libraryItems = await ctx.db.query("userLibrary").collect();
 
-    // Count anime vs manga
-    const animeCount = libraryItems.filter(
-      (i) => i.mediaType === "ANIME",
-    ).length;
-    const mangaCount = libraryItems.filter(
-      (i) => i.mediaType === "MANGA",
-    ).length;
-
-    // Get today's comparisons from last7Days
     const today = getMidnight(Date.now());
     const todayEntry = stats?.last7Days.find((d) => d.date === today);
     const todayComparisons = todayEntry?.count ?? 0;
 
-    // Calculate average comparisons per item
-    const averageComparisonsPerItem =
-      libraryItems.length > 0
-        ? Math.round(
-            libraryItems.reduce((sum, item) => sum + item.comparisonCount, 0) /
-              libraryItems.length,
-          )
-        : 0;
-
-    // Format last7Days with day names for the activity chart
     const last7Days: { day: string; count: number }[] = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date(today - i * DAYS_MS);
@@ -49,6 +28,9 @@ export const getAggregatedStats = query({
       last7Days.push({ day: dayName, count: entry?.count ?? 0 });
     }
 
+    const animeCount = stats?.animeCount ?? 0;
+    const mangaCount = stats?.mangaCount ?? 0;
+
     return {
       totalComparisons: stats?.totalComparisons ?? 0,
       todayComparisons,
@@ -57,11 +39,11 @@ export const getAggregatedStats = query({
       streakDays: [],
       animeCount,
       mangaCount,
-      totalItems: libraryItems.length,
-      stability: 100,
+      totalItems: animeCount + mangaCount,
       last7Days,
       tieCount: stats?.tieCount ?? 0,
-      averageComparisonsPerItem,
+      rankedAnimeCount: stats?.rankedAnimeCount ?? 0,
+      rankedMangaCount: stats?.rankedMangaCount ?? 0,
     };
   },
 });
@@ -80,6 +62,10 @@ export const getOrInitializeStats = mutation({
     const id = await ctx.db.insert("userStats", {
       totalComparisons: 0,
       tieCount: 0,
+      animeCount: 0,
+      mangaCount: 0,
+      rankedAnimeCount: 0,
+      rankedMangaCount: 0,
       currentStreak: 0,
       longestStreak: 0,
       lastComparisonDate: undefined,
@@ -106,6 +92,10 @@ export async function updateStatsAfterComparison(
     await ctx.db.insert("userStats", {
       totalComparisons: 1,
       tieCount: isTie ? 1 : 0,
+      animeCount: 0,
+      mangaCount: 0,
+      rankedAnimeCount: 0,
+      rankedMangaCount: 0,
       currentStreak: 1,
       longestStreak: 1,
       lastComparisonDate: today,
@@ -167,198 +157,84 @@ export async function updateStatsAfterComparison(
   });
 }
 
-// Get comprehensive user stats
-export const getUserStats = query({
-  args: {},
-  handler: async (ctx) => {
-    const comparisons = await ctx.db
-      .query("comparisons")
-      .withIndex("by_created_at")
-      .order("desc")
-      .collect();
+export async function updateStatsOnLibraryChange(
+  ctx: MutationCtx,
+  mediaType: "ANIME" | "MANGA",
+  rd: number,
+  action: "add" | "remove",
+): Promise<void> {
+  const stats = await ctx.db.query("userStats").first();
+  const now = Date.now();
+  const isRanked = rd <= RD_CONFIDENCE_THRESHOLD;
+  const delta = action === "add" ? 1 : -1;
 
-    const libraryItems = await ctx.db.query("userLibrary").collect();
+  if (!stats) {
+    if (action === "remove") return;
 
-    // Count anime vs manga using denormalized mediaType
-    const animeCount = libraryItems.filter(
-      (i) => i.mediaType === "ANIME",
-    ).length;
-    const mangaCount = libraryItems.filter(
-      (i) => i.mediaType === "MANGA",
-    ).length;
-
-    // Calculate streak
-    const streak = calculateStreak(comparisons);
-
-    // Get today's comparisons
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const todayStart = today.getTime();
-    const todayComparisons = comparisons.filter(
-      (c) => c.createdAt >= todayStart,
-    ).length;
-
-    // Calculate ranking stability (how much ratings are changing)
-    const recentComparisons = comparisons.slice(0, 20);
-    const stability = calculateStability(recentComparisons);
-
-    // Get comparison history for last 7 days
-    const last7Days = getLast7DaysActivity(comparisons);
-
-    // Count ties
-    const tieCount = comparisons.filter((c) => c.isTie).length;
-
-    return {
-      totalComparisons: comparisons.length,
-      todayComparisons,
-      streak: streak.current,
-      longestStreak: streak.longest,
-      streakDays: streak.days,
-      animeCount,
-      mangaCount,
-      totalItems: libraryItems.length,
-      stability,
-      last7Days,
-      tieCount,
-      averageComparisonsPerItem:
-        libraryItems.length > 0
-          ? Math.round(
-              libraryItems.reduce(
-                (sum, item) => sum + item.comparisonCount,
-                0,
-              ) / libraryItems.length,
-            )
-          : 0,
-    };
-  },
-});
-
-// Calculate current streak and longest streak
-function calculateStreak(comparisons: { createdAt: number }[]): {
-  current: number;
-  longest: number;
-  days: string[];
-} {
-  if (comparisons.length === 0) {
-    return { current: 0, longest: 0, days: [] };
+    await ctx.db.insert("userStats", {
+      totalComparisons: 0,
+      tieCount: 0,
+      animeCount: mediaType === "ANIME" ? 1 : 0,
+      mangaCount: mediaType === "MANGA" ? 1 : 0,
+      rankedAnimeCount: mediaType === "ANIME" && isRanked ? 1 : 0,
+      rankedMangaCount: mediaType === "MANGA" && isRanked ? 1 : 0,
+      currentStreak: 0,
+      longestStreak: 0,
+      lastComparisonDate: undefined,
+      last7Days: [],
+      updatedAt: now,
+    });
+    return;
   }
 
-  // Get unique days with comparisons
-  const daysWithComparisons = new Set<string>();
-  comparisons.forEach((c) => {
-    const date = new Date(c.createdAt);
-    const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-    daysWithComparisons.add(dayKey);
+  const updates: Record<string, number> = { updatedAt: now };
+
+  if (mediaType === "ANIME") {
+    updates.animeCount = Math.max(0, (stats.animeCount ?? 0) + delta);
+    if (isRanked) {
+      updates.rankedAnimeCount = Math.max(
+        0,
+        (stats.rankedAnimeCount ?? 0) + delta,
+      );
+    }
+  } else {
+    updates.mangaCount = Math.max(0, (stats.mangaCount ?? 0) + delta);
+    if (isRanked) {
+      updates.rankedMangaCount = Math.max(
+        0,
+        (stats.rankedMangaCount ?? 0) + delta,
+      );
+    }
+  }
+
+  await ctx.db.patch(stats._id, updates);
+}
+
+export async function updateRankedCount(
+  ctx: MutationCtx,
+  mediaType: "ANIME" | "MANGA",
+  wasRanked: boolean,
+  isNowRanked: boolean,
+): Promise<void> {
+  if (wasRanked === isNowRanked) return;
+
+  const stats = await ctx.db.query("userStats").first();
+  if (!stats) return;
+
+  const delta = isNowRanked ? 1 : -1;
+  const field = mediaType === "ANIME" ? "rankedAnimeCount" : "rankedMangaCount";
+  const currentValue =
+    mediaType === "ANIME"
+      ? (stats.rankedAnimeCount ?? 0)
+      : (stats.rankedMangaCount ?? 0);
+
+  await ctx.db.patch(stats._id, {
+    [field]: Math.max(0, currentValue + delta),
+    updatedAt: Date.now(),
   });
-
-  // Sort days
-  const sortedDays = Array.from(daysWithComparisons).sort().reverse();
-
-  // Calculate current streak
-  let currentStreak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  const todayKey = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`;
-  const yesterdayKey = `${yesterday.getFullYear()}-${yesterday.getMonth()}-${yesterday.getDate()}`;
-
-  // Check if streak includes today or yesterday
-  let checkDate = new Date(today);
-  if (!daysWithComparisons.has(todayKey)) {
-    if (!daysWithComparisons.has(yesterdayKey)) {
-      currentStreak = 0;
-    } else {
-      checkDate = yesterday;
-    }
-  }
-
-  if (currentStreak !== 0 || daysWithComparisons.has(todayKey)) {
-    while (true) {
-      const key = `${checkDate.getFullYear()}-${checkDate.getMonth()}-${checkDate.getDate()}`;
-      if (daysWithComparisons.has(key)) {
-        currentStreak++;
-        checkDate.setDate(checkDate.getDate() - 1);
-      } else {
-        break;
-      }
-    }
-  }
-
-  // Calculate longest streak
-  let longestStreak = 0;
-  let tempStreak = 0;
-  let prevDate: Date | null = null;
-
-  for (const dayStr of sortedDays) {
-    const parts = dayStr.split("-").map(Number);
-    const date = new Date(parts[0], parts[1], parts[2]);
-
-    if (prevDate === null) {
-      tempStreak = 1;
-    } else {
-      const diff = (prevDate.getTime() - date.getTime()) / DAYS_MS;
-      if (diff === 1) {
-        tempStreak++;
-      } else {
-        longestStreak = Math.max(longestStreak, tempStreak);
-        tempStreak = 1;
-      }
-    }
-    prevDate = date;
-  }
-  longestStreak = Math.max(longestStreak, tempStreak);
-
-  return {
-    current: currentStreak,
-    longest: longestStreak,
-    days: sortedDays.slice(0, 7),
-  };
 }
 
-// Calculate ranking stability (0-100, higher = more stable)
-function calculateStability(
-  recentComparisons: { winnerId: string; loserId: string }[],
-): number {
-  if (recentComparisons.length < 5) {
-    return 100; // Not enough data, assume stable
-  }
-
-  // In a stable ranking, winners and losers should be predictable
-  // We can't easily measure this without more data, so use a simplified heuristic
-  // More comparisons = more refined = more stable
-  const comparisonDensity = Math.min(100, recentComparisons.length * 5);
-  return comparisonDensity;
-}
-
-// Get activity for last 7 days
-function getLast7DaysActivity(
-  comparisons: { createdAt: number }[],
-): { day: string; count: number }[] {
-  const days: { day: string; count: number }[] = [];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  for (let i = 6; i >= 0; i--) {
-    const date = new Date(today);
-    date.setDate(date.getDate() - i);
-    const dayStart = date.getTime();
-    const dayEnd = dayStart + DAYS_MS;
-
-    const count = comparisons.filter(
-      (c) => c.createdAt >= dayStart && c.createdAt < dayEnd,
-    ).length;
-
-    const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
-    days.push({ day: dayName, count });
-  }
-
-  return days;
-}
-
-// Get leaderboard of top items by Elo
+// Get leaderboard of top items by rating
 export const getTopItems = query({
   args: {
     mediaType: v.optional(v.union(v.literal("ANIME"), v.literal("MANGA"))),
@@ -375,12 +251,11 @@ export const getTopItems = query({
         .query("userLibrary")
         .withIndex("by_media_type", (q) => q.eq("mediaType", mediaType))
         .collect();
-      // Sort by Elo (can't use multiple indexes)
-      filtered.sort((a, b) => b.eloRating - a.eloRating);
+      filtered.sort((a, b) => b.rating - a.rating);
     } else {
       filtered = await ctx.db
         .query("userLibrary")
-        .withIndex("by_elo_rating")
+        .withIndex("by_rating")
         .order("desc")
         .collect();
     }
@@ -397,7 +272,8 @@ export const getTopItems = query({
         title: item.mediaTitle,
         coverImage: item.mediaCoverImage,
         type: item.mediaType,
-        eloRating: item.eloRating,
+        rating: item.rating,
+        rd: item.rd,
         percentileScore: score,
         comparisonCount: item.comparisonCount,
       };

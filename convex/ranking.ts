@@ -1,81 +1,101 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { query } from "./_generated/server";
-import { CLOSE_RATING_RANGE, NEW_ITEM_THRESHOLD } from "./lib/constants";
+import { CLOSE_RATING_RANGE, RD_CONFIDENCE_THRESHOLD } from "./lib/constants";
 
-const RANKABLE_STATUSES = ["COMPLETED", "WATCHING", "ON_HOLD"] as const;
+const RANKABLE_STATUSES = [
+  "COMPLETED",
+  "WATCHING",
+  "ON_HOLD",
+  "DROPPED",
+] as const;
 
-// Helper function to find a smart pair from a list of items
+type SkippedPair = [Id<"userLibrary">, Id<"userLibrary">];
+
+function isPairSkipped(
+  item1Id: Id<"userLibrary">,
+  item2Id: Id<"userLibrary">,
+  skippedPairs: SkippedPair[],
+): boolean {
+  return skippedPairs.some(
+    ([a, b]) =>
+      (a === item1Id && b === item2Id) || (a === item2Id && b === item1Id),
+  );
+}
+
 function findSmartPair(
   filteredItems: Doc<"userLibrary">[],
+  skippedPairs: SkippedPair[] = [],
 ): { item1: Doc<"userLibrary">; item2: Doc<"userLibrary"> } | null {
   if (filteredItems.length < 2) {
     return null;
   }
 
-  // Sort by Elo for percentile-based pairing
-  const sortedByElo = [...filteredItems].sort(
-    (a, b) => b.eloRating - a.eloRating,
-  );
+  const sortedByRating = [...filteredItems].sort((a, b) => b.rating - a.rating);
 
-  // Find items that need re-ranking first (triggered by status change to COMPLETED)
   const needsReranking = filteredItems.filter((item) => item.needsReranking);
-  if (needsReranking.length > 0) {
-    const primaryItem = needsReranking[0];
-    const opponent = findOpponent(primaryItem, filteredItems, sortedByElo);
-    if (opponent) {
+  for (const primaryItem of needsReranking) {
+    const opponent = findOpponent(primaryItem, filteredItems, sortedByRating);
+    if (
+      opponent &&
+      !isPairSkipped(primaryItem._id, opponent._id, skippedPairs)
+    ) {
       return { item1: primaryItem, item2: opponent };
     }
   }
 
-  // Find new items that need binary-search placement
-  const newItems = filteredItems.filter(
-    (item) => item.comparisonCount < NEW_ITEM_THRESHOLD,
-  );
+  const highRdItems = filteredItems
+    .filter((item) => item.rd > RD_CONFIDENCE_THRESHOLD)
+    .sort((a, b) => b.rd - a.rd);
 
-  if (newItems.length > 0) {
-    // Pick the newest item with fewest comparisons
-    const primaryItem = newItems.sort(
-      (a, b) => a.comparisonCount - b.comparisonCount,
-    )[0];
-
-    const opponent = findBinarySearchOpponent(primaryItem, sortedByElo);
-    if (opponent) {
+  for (const primaryItem of highRdItems) {
+    const opponent = findBinarySearchOpponent(primaryItem, sortedByRating);
+    if (
+      opponent &&
+      !isPairSkipped(primaryItem._id, opponent._id, skippedPairs)
+    ) {
       return { item1: primaryItem, item2: opponent };
     }
   }
 
-  // For established items: pair within close rating range
-  // Prioritize items not compared recently
   const established = filteredItems.filter(
-    (item) => item.comparisonCount >= NEW_ITEM_THRESHOLD,
+    (item) => item.rd <= RD_CONFIDENCE_THRESHOLD,
   );
 
   if (established.length >= 2) {
-    // Sort by last compared time (oldest first), with null/undefined last
     const byLastCompared = [...established].sort((a, b) => {
       const aTime = a.lastComparedAt ?? 0;
       const bTime = b.lastComparedAt ?? 0;
       return aTime - bTime;
     });
 
-    const primaryItem = byLastCompared[0];
-    const opponent = findCloseRatingOpponent(primaryItem, established);
-    if (opponent) {
-      return { item1: primaryItem, item2: opponent };
+    for (const primaryItem of byLastCompared) {
+      const opponent = findCloseRatingOpponent(primaryItem, established);
+      if (
+        opponent &&
+        !isPairSkipped(primaryItem._id, opponent._id, skippedPairs)
+      ) {
+        return { item1: primaryItem, item2: opponent };
+      }
     }
   }
 
-  // Fallback: random pairing from filtered items
-  const shuffled = filteredItems.sort(() => Math.random() - 0.5);
-  return { item1: shuffled[0], item2: shuffled[1] };
+  const shuffled = [...filteredItems].sort(() => Math.random() - 0.5);
+  for (let i = 0; i < shuffled.length - 1; i++) {
+    for (let j = i + 1; j < shuffled.length; j++) {
+      if (!isPairSkipped(shuffled[i]._id, shuffled[j]._id, skippedPairs)) {
+        return { item1: shuffled[i], item2: shuffled[j] };
+      }
+    }
+  }
+
+  return null;
 }
 
-// Get a smart pair for comparison, filtered by media type
-// Only includes rankable statuses: COMPLETED, WATCHING, ON_HOLD
 export const getSmartPair = query({
   args: {
     mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
+    skippedPairs: v.optional(v.array(v.array(v.id("userLibrary")))),
   },
   handler: async (ctx, args) => {
     const allItems = await ctx.db
@@ -89,43 +109,40 @@ export const getSmartPair = query({
       ),
     );
 
-    return findSmartPair(rankableItems);
+    const skipped = (args.skippedPairs ?? []) as SkippedPair[];
+    return findSmartPair(rankableItems, skipped);
   },
 });
 
-// Combined query: get smart pair and stats in one request (saves a DB round-trip)
-// Only includes rankable statuses: COMPLETED, WATCHING, ON_HOLD
 export const getSmartPairWithStats = query({
   args: {
     mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
+    skippedPairs: v.optional(v.array(v.array(v.id("userLibrary")))),
   },
   handler: async (ctx, args) => {
-    // Fetch items ONCE
     const allItems = await ctx.db
       .query("userLibrary")
       .withIndex("by_media_type", (q) => q.eq("mediaType", args.mediaType))
       .collect();
 
-    // Filter to rankable statuses only
     const rankableItems = allItems.filter((item) =>
       RANKABLE_STATUSES.includes(
         item.watchStatus as (typeof RANKABLE_STATUSES)[number],
       ),
     );
 
-    // Calculate pair using shared helper
-    const pair = findSmartPair(rankableItems);
+    const skipped = (args.skippedPairs ?? []) as SkippedPair[];
+    const pair = findSmartPair(rankableItems, skipped);
 
-    // Calculate stats from the SAME data (no second fetch)
-    const newItems = rankableItems.filter(
-      (item) => item.comparisonCount < NEW_ITEM_THRESHOLD,
+    const highRdItems = rankableItems.filter(
+      (item) => item.rd > RD_CONFIDENCE_THRESHOLD,
     );
 
     const stats = {
       totalItems: rankableItems.length,
       itemsNeedingReranking: rankableItems.filter((i) => i.needsReranking)
         .length,
-      newItemsNeedingPlacement: newItems.length,
+      unrankedItems: highRdItems.length,
       averageComparisons:
         rankableItems.length > 0
           ? Math.round(
@@ -135,47 +152,60 @@ export const getSmartPairWithStats = query({
           : 0,
     };
 
-    return { pair, stats };
+    if (!pair) {
+      return { pair: null, stats };
+    }
+
+    const [media1, media2] = await Promise.all([
+      ctx.db.get(pair.item1.mediaItemId),
+      ctx.db.get(pair.item2.mediaItemId),
+    ]);
+
+    const enrichedPair = {
+      item1: {
+        ...pair.item1,
+        startYear: media1?.startDate?.year ?? null,
+        episodes: media1?.episodes ?? null,
+        chapters: media1?.chapters ?? null,
+        format: media1?.format ?? null,
+      },
+      item2: {
+        ...pair.item2,
+        startYear: media2?.startDate?.year ?? null,
+        episodes: media2?.episodes ?? null,
+        chapters: media2?.chapters ?? null,
+        format: media2?.format ?? null,
+      },
+    };
+
+    return { pair: enrichedPair, stats };
   },
 });
 
-function findBinarySearchOpponent<
-  T extends {
-    _id: Id<"userLibrary">;
-    comparisonCount: number;
-    eloRating: number;
-  },
->(primaryItem: T, sortedByElo: T[]): T | null {
-  const totalItems = sortedByElo.length;
+function findBinarySearchOpponent(
+  primaryItem: Doc<"userLibrary">,
+  sortedByRating: Doc<"userLibrary">[],
+): Doc<"userLibrary"> | null {
+  const totalItems = sortedByRating.length;
   if (totalItems < 2) return null;
 
-  // Based on comparison count, pick strategic percentile
-  // 0 comparisons: 50th percentile (middle)
-  // 1 comparison: 75th or 25th (based on current rating)
-  // 2+ comparisons: refine further
   let targetIndex: number;
 
   if (primaryItem.comparisonCount === 0) {
-    // Start at middle
     targetIndex = Math.floor(totalItems / 2);
   } else if (primaryItem.comparisonCount === 1) {
-    // Based on current position, go to 25th or 75th
-    const currentRank = sortedByElo.findIndex(
+    const currentRank = sortedByRating.findIndex(
       (item) => item._id === primaryItem._id,
     );
     if (currentRank < totalItems / 2) {
-      // Currently in top half, compare against 75th percentile
       targetIndex = Math.floor(totalItems * 0.25);
     } else {
-      // Currently in bottom half, compare against 25th percentile
       targetIndex = Math.floor(totalItems * 0.75);
     }
   } else {
-    // Further refinement: find nearest uncompared item
-    const currentRank = sortedByElo.findIndex(
+    const currentRank = sortedByRating.findIndex(
       (item) => item._id === primaryItem._id,
     );
-    // Go to 1/4 or 3/4 of the remaining range
     if (primaryItem.comparisonCount % 2 === 0) {
       targetIndex = Math.max(0, currentRank - Math.floor(totalItems / 4));
     } else {
@@ -186,46 +216,39 @@ function findBinarySearchOpponent<
     }
   }
 
-  // Ensure we don't pick the primary item itself
-  let opponent = sortedByElo[targetIndex];
+  let opponent = sortedByRating[targetIndex];
   if (opponent._id === primaryItem._id) {
-    // Try adjacent items
     opponent =
-      sortedByElo[targetIndex + 1] || sortedByElo[targetIndex - 1] || null;
+      sortedByRating[targetIndex + 1] ||
+      sortedByRating[targetIndex - 1] ||
+      null;
   }
 
   return opponent;
 }
 
-function findCloseRatingOpponent<
-  T extends {
-    _id: Id<"userLibrary">;
-    eloRating: number;
-    lastComparedAt?: number;
-  },
->(primaryItem: T, allItems: T[]): T | null {
-  const targetRating = primaryItem.eloRating;
+function findCloseRatingOpponent(
+  primaryItem: Doc<"userLibrary">,
+  allItems: Doc<"userLibrary">[],
+): Doc<"userLibrary"> | null {
+  const targetRating = primaryItem.rating;
 
-  // Find items within the close rating range
   const closeRatingItems = allItems.filter(
     (item) =>
       item._id !== primaryItem._id &&
-      Math.abs(item.eloRating - targetRating) <= CLOSE_RATING_RANGE,
+      Math.abs(item.rating - targetRating) <= CLOSE_RATING_RANGE,
   );
 
   if (closeRatingItems.length === 0) {
-    // No items in range, find the closest one
     const others = allItems.filter((item) => item._id !== primaryItem._id);
     if (others.length === 0) return null;
 
     return others.sort(
       (a, b) =>
-        Math.abs(a.eloRating - targetRating) -
-        Math.abs(b.eloRating - targetRating),
+        Math.abs(a.rating - targetRating) - Math.abs(b.rating - targetRating),
     )[0];
   }
 
-  // Among close-rating items, prefer those not recently compared
   const sortedByRecency = [...closeRatingItems].sort((a, b) => {
     const aTime = a.lastComparedAt ?? 0;
     const bTime = b.lastComparedAt ?? 0;
@@ -235,26 +258,22 @@ function findCloseRatingOpponent<
   return sortedByRecency[0];
 }
 
-function findOpponent<
-  T extends {
-    _id: Id<"userLibrary">;
-    comparisonCount: number;
-    eloRating: number;
-  },
->(primaryItem: T, allItems: T[], sortedByElo: T[]): T | null {
-  if (primaryItem.comparisonCount < NEW_ITEM_THRESHOLD) {
-    return findBinarySearchOpponent(primaryItem, sortedByElo);
+function findOpponent(
+  primaryItem: Doc<"userLibrary">,
+  allItems: Doc<"userLibrary">[],
+  sortedByRating: Doc<"userLibrary">[],
+): Doc<"userLibrary"> | null {
+  if (primaryItem.rd > RD_CONFIDENCE_THRESHOLD) {
+    return findBinarySearchOpponent(primaryItem, sortedByRating);
   }
   return findCloseRatingOpponent(primaryItem, allItems);
 }
 
-// Get stats about the ranking
 export const getRankingStats = query({
   args: {
     mediaType: v.optional(v.union(v.literal("ANIME"), v.literal("MANGA"))),
   },
   handler: async (ctx, args) => {
-    // Get library items, optionally filtered by type
     let filteredItems: Doc<"userLibrary">[];
     if (args.mediaType) {
       const mediaType = args.mediaType;
@@ -268,15 +287,12 @@ export const getRankingStats = query({
 
     const comparisons = await ctx.db.query("comparisons").collect();
 
-    // Count ties
     const ties = comparisons.filter((c) => c.isTie).length;
 
-    // Get items needing re-ranking
     const needsReranking = filteredItems.filter((item) => item.needsReranking);
 
-    // Get new items needing placement
-    const newItems = filteredItems.filter(
-      (item) => item.comparisonCount < NEW_ITEM_THRESHOLD,
+    const unrankedItems = filteredItems.filter(
+      (item) => item.rd > RD_CONFIDENCE_THRESHOLD,
     );
 
     return {
@@ -284,7 +300,7 @@ export const getRankingStats = query({
       totalComparisons: comparisons.length,
       totalTies: ties,
       itemsNeedingReranking: needsReranking.length,
-      newItemsNeedingPlacement: newItems.length,
+      unrankedItems: unrankedItems.length,
       averageComparisons:
         filteredItems.length > 0
           ? Math.round(
@@ -298,57 +314,46 @@ export const getRankingStats = query({
   },
 });
 
-// Get items sorted by Elo with percentile scores
 export const getItemsWithPercentile = query({
   args: {
     mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
   },
   handler: async (ctx, args) => {
-    // Get items of the requested type using the index
     const filteredItems = await ctx.db
       .query("userLibrary")
       .withIndex("by_media_type", (q) => q.eq("mediaType", args.mediaType))
       .collect();
 
-    // Sort by Elo descending
-    const sorted = filteredItems.sort((a, b) => b.eloRating - a.eloRating);
+    const sorted = filteredItems.sort((a, b) => b.rating - a.rating);
     const total = sorted.length;
 
-    // Add rank and percentile score
     return sorted.map((item, index) => {
       const rank = index + 1;
-      // Percentile: (items ranked below / total) * 100
-      // Then convert to 0-10 scale
       const itemsRankedBelow = total - rank;
       const percentile =
         total > 1 ? (itemsRankedBelow / (total - 1)) * 100 : 50;
-      const score = percentile / 10; // 0-10 scale
+      const score = percentile / 10;
 
       return {
         ...item,
         rank,
-        percentileScore: Math.round(score * 10) / 10, // Round to 1 decimal
+        percentileScore: Math.round(score * 10) / 10,
         totalInType: total,
       };
     });
   },
 });
 
-// Check if there are due comparisons
 export const getDueComparisons = query({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
     const allItems = await ctx.db.query("userLibrary").collect();
 
-    // Count items needing comparison
     const dueItems = allItems.filter((item) => {
-      // Needs re-ranking (status changed to COMPLETED)
       if (item.needsReranking) return true;
-      // Scheduled comparison is due
       if (item.nextComparisonDue && item.nextComparisonDue < now) return true;
-      // New item with few comparisons
-      if (item.comparisonCount < NEW_ITEM_THRESHOLD) return true;
+      if (item.rd > RD_CONFIDENCE_THRESHOLD) return true;
       return false;
     });
 
@@ -359,8 +364,64 @@ export const getDueComparisons = query({
       scheduled: dueItems.filter(
         (i) => i.nextComparisonDue && i.nextComparisonDue < now,
       ).length,
-      newItems: dueItems.filter((i) => i.comparisonCount < NEW_ITEM_THRESHOLD)
+      unrankedItems: dueItems.filter((i) => i.rd > RD_CONFIDENCE_THRESHOLD)
         .length,
     };
+  },
+});
+
+export const getRankedItems = query({
+  args: {
+    mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
+  },
+  handler: async (ctx, args) => {
+    const items = await ctx.db
+      .query("userLibrary")
+      .withIndex("by_media_type_and_rd", (q) =>
+        q.eq("mediaType", args.mediaType).lte("rd", RD_CONFIDENCE_THRESHOLD),
+      )
+      .collect();
+
+    return items.sort((a, b) => b.rating - a.rating);
+  },
+});
+
+export const getUnrankedItems = query({
+  args: {
+    mediaType: v.union(v.literal("ANIME"), v.literal("MANGA")),
+  },
+  handler: async (ctx, args) => {
+    const items = await ctx.db
+      .query("userLibrary")
+      .withIndex("by_media_type_and_rd", (q) =>
+        q.eq("mediaType", args.mediaType).gt("rd", RD_CONFIDENCE_THRESHOLD),
+      )
+      .collect();
+
+    return items.sort((a, b) => b.rd - a.rd);
+  },
+});
+
+export const getUnrankedCount = query({
+  args: {
+    mediaType: v.optional(v.union(v.literal("ANIME"), v.literal("MANGA"))),
+  },
+  handler: async (ctx, args) => {
+    const { mediaType } = args;
+    if (mediaType) {
+      const items = await ctx.db
+        .query("userLibrary")
+        .withIndex("by_media_type_and_rd", (q) =>
+          q.eq("mediaType", mediaType).gt("rd", RD_CONFIDENCE_THRESHOLD),
+        )
+        .collect();
+      return items.length;
+    }
+
+    const allItems = await ctx.db
+      .query("userLibrary")
+      .withIndex("by_rd", (q) => q.gt("rd", RD_CONFIDENCE_THRESHOLD))
+      .collect();
+    return allItems.length;
   },
 });

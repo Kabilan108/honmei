@@ -7,7 +7,7 @@ export const getFullExport = query({
   handler: async (ctx) => {
     const libraryItems = await ctx.db
       .query("userLibrary")
-      .withIndex("by_elo_rating")
+      .withIndex("by_rating")
       .order("desc")
       .collect();
 
@@ -16,8 +16,13 @@ export const getFullExport = query({
         const media = await ctx.db.get(item.mediaItemId);
         return {
           rank: index + 1,
-          eloRating: item.eloRating,
+          rating: item.rating,
+          rd: item.rd,
+          volatility: item.volatility,
           comparisonCount: item.comparisonCount,
+          totalWins: item.totalWins,
+          totalLosses: item.totalLosses,
+          totalTies: item.totalTies,
           watchStatus: item.watchStatus,
           customTags: item.customTags,
           userNotes: item.userNotes,
@@ -81,7 +86,7 @@ export const getCsvExport = query({
   handler: async (ctx, args) => {
     const libraryItems = await ctx.db
       .query("userLibrary")
-      .withIndex("by_elo_rating")
+      .withIndex("by_rating")
       .order("desc")
       .collect();
 
@@ -110,7 +115,8 @@ export const getCsvExport = query({
         title: item.media?.title ?? "Unknown",
         titleEnglish: item.media?.titleEnglish ?? "",
         type: item.media?.type ?? "UNKNOWN",
-        eloRating: item.eloRating,
+        rating: item.rating,
+        rd: item.rd,
         percentileScore: score,
         comparisonCount: item.comparisonCount,
         watchStatus: item.watchStatus,

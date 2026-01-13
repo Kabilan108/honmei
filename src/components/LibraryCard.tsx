@@ -23,7 +23,8 @@ import {
 
 interface LibraryItem {
   _id: string;
-  eloRating: number;
+  rating: number;
+  rd: number;
   comparisonCount: number;
   watchStatus: WatchStatus;
   mediaTitle: string;
@@ -34,11 +35,12 @@ interface LibraryItem {
 
 interface LibraryCardProps {
   item: LibraryItem;
-  rank: number;
+  rank?: number;
   totalItems: number;
   onRemove: (args: { id: string }) => Promise<void>;
   onStatusChange?: (args: { id: string; watchStatus: WatchStatus }) => void;
   onClick?: () => void;
+  isUnranked?: boolean;
 }
 
 export const LibraryCard = memo(function LibraryCard({
@@ -48,9 +50,12 @@ export const LibraryCard = memo(function LibraryCard({
   onRemove,
   onStatusChange,
   onClick,
+  isUnranked = false,
 }: LibraryCardProps) {
   const calculateScore = (): string | null => {
+    if (isUnranked) return null;
     if (totalItems < 5) return null;
+    if (!rank) return null;
     const score = ((totalItems - rank) / (totalItems - 1)) * 10;
     return score.toFixed(1);
   };
@@ -75,7 +80,9 @@ export const LibraryCard = memo(function LibraryCard({
   return (
     // biome-ignore lint/a11y/useSemanticElements: card with nested interactive elements requires div wrapper
     <div
-      className="bg-surface overflow-hidden border border-border group relative cursor-pointer transition-all duration-200 hover:border-primary/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20"
+      className={`bg-surface overflow-hidden border border-border group relative cursor-pointer transition-all duration-200 hover:border-primary/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 ${
+        isUnranked ? "opacity-75" : ""
+      }`}
       onClick={onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -94,12 +101,18 @@ export const LibraryCard = memo(function LibraryCard({
           className="w-full h-full object-cover"
         />
 
-        <div className="absolute top-0 left-0 bg-black/80 px-2 py-1 text-sm font-bold text-white">
-          #{rank}
-        </div>
+        {/* Rank badge - only show for ranked items */}
+        {!isUnranked && rank && (
+          <div className="absolute top-0 left-0 bg-black/80 px-2 py-1 text-sm font-bold text-white">
+            #{rank}
+          </div>
+        )}
 
+        {/* Score badge - show score for ranked, "?" for unranked */}
         <div className="absolute top-0 right-0 bg-black/80 px-2 py-1 text-sm font-mono">
-          {score !== null ? (
+          {isUnranked ? (
+            <span className="text-foreground-muted">?</span>
+          ) : score !== null ? (
             <span className="text-primary">{score}</span>
           ) : (
             <span className="text-foreground-subtle text-xs">--</span>

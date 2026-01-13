@@ -1,14 +1,18 @@
 import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import {
+  GLICKO_DEFAULT_RATING,
+  GLICKO_DEFAULT_RD,
+  GLICKO_DEFAULT_VOLATILITY,
+} from "./lib/constants";
+import { updateStatsOnLibraryChange } from "./stats";
 
-// Get all AniList IDs in user's library (for checking if items are already added)
 export const getAnilistIds = query({
   args: {},
   handler: async (ctx) => {
     const libraryItems = await ctx.db.query("userLibrary").collect();
 
-    // Fetch media items in parallel to get anilistIds
     const anilistIds = await Promise.all(
       libraryItems.map(async (item) => {
         const media = await ctx.db.get(item.mediaItemId);
@@ -20,7 +24,6 @@ export const getAnilistIds = query({
   },
 });
 
-// Get all items in user's library with media details
 export const getAll = query({
   args: {},
   handler: async (ctx) => {
@@ -29,33 +32,29 @@ export const getAll = query({
       .order("desc")
       .collect();
 
-    // Return items directly - media data is denormalized
     return libraryItems;
   },
 });
 
-// Get library items sorted by Elo rating
-export const getByElo = query({
+export const getByRating = query({
   args: {},
   handler: async (ctx) => {
     const libraryItems = await ctx.db
       .query("userLibrary")
-      .withIndex("by_elo_rating")
+      .withIndex("by_rating")
       .order("desc")
       .collect();
 
-    // Return items directly - media data is denormalized
     return libraryItems;
   },
 });
 
-// Get library items with pagination (for large libraries)
-export const getByEloPaginated = query({
+export const getByRatingPaginated = query({
   args: { paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     const results = await ctx.db
       .query("userLibrary")
-      .withIndex("by_elo_rating")
+      .withIndex("by_rating")
       .order("desc")
       .paginate(args.paginationOpts);
 
@@ -63,16 +62,13 @@ export const getByEloPaginated = query({
   },
 });
 
-// Get a single library item by ID
 export const getById = query({
   args: { id: v.id("userLibrary") },
   handler: async (ctx, args) => {
-    // Return item directly - media data is denormalized
     return await ctx.db.get(args.id);
   },
 });
 
-// Get a single library item with full media details
 export const getByIdWithDetails = query({
   args: { id: v.id("userLibrary") },
   handler: async (ctx, args) => {
@@ -89,7 +85,6 @@ export const getByIdWithDetails = query({
   },
 });
 
-// Add a media item to the library
 export const addToLibrary = mutation({
   args: {
     mediaItemId: v.id("mediaItems"),
@@ -102,7 +97,6 @@ export const addToLibrary = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    // Check if already in library
     const existing = await ctx.db
       .query("userLibrary")
       .withIndex("by_media_item", (q) => q.eq("mediaItemId", args.mediaItemId))
@@ -112,7 +106,6 @@ export const addToLibrary = mutation({
       throw new Error("Item already in library");
     }
 
-    // Fetch media item to copy denormalized fields
     const media = await ctx.db.get(args.mediaItemId);
     if (!media) {
       throw new Error("Media item not found");
@@ -121,34 +114,41 @@ export const addToLibrary = mutation({
     const now = Date.now();
     const id = await ctx.db.insert("userLibrary", {
       mediaItemId: args.mediaItemId,
-      // Denormalized fields - prefer English title when available
       mediaTitle: media.titleEnglish || media.title,
       mediaCoverImage: media.coverImage,
       mediaBannerImage: media.bannerImage,
       mediaType: media.type,
       mediaGenres: media.genres,
-      // Elo fields
-      eloRating: 1500,
+      rating: GLICKO_DEFAULT_RATING,
+      rd: GLICKO_DEFAULT_RD,
+      volatility: GLICKO_DEFAULT_VOLATILITY,
       comparisonCount: 0,
+      totalWins: 0,
+      totalLosses: 0,
+      totalTies: 0,
       customTags: [],
       watchStatus: args.watchStatus,
       addedAt: now,
       updatedAt: now,
     });
 
+    await updateStatsOnLibraryChange(ctx, media.type, GLICKO_DEFAULT_RD, "add");
+
     return id;
   },
 });
 
-// Remove from library
 export const removeFromLibrary = mutation({
   args: { id: v.id("userLibrary") },
   handler: async (ctx, args) => {
+    const item = await ctx.db.get(args.id);
+    if (item) {
+      await updateStatsOnLibraryChange(ctx, item.mediaType, item.rd, "remove");
+    }
     await ctx.db.delete(args.id);
   },
 });
 
-// Update library item
 export const updateLibraryItem = mutation({
   args: {
     id: v.id("userLibrary"),
@@ -174,11 +174,9 @@ export const updateLibraryItem = mutation({
       updatedAt: Date.now(),
     };
 
-    // If status is being changed
     if (watchStatus !== undefined) {
       updates.watchStatus = watchStatus;
 
-      // Trigger re-ranking comparisons when marked as COMPLETED
       if (watchStatus === "COMPLETED" && item?.watchStatus !== "COMPLETED") {
         updates.needsReranking = true;
       }
