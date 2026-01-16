@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 import { ComparisonCard } from "@/components/ComparisonCard";
 import { ComparisonPairSkeleton } from "@/components/ComparisonCardSkeleton";
+import { MobileComparisonSwipe } from "@/components/MobileComparisonSwipe";
 import { StatsModalContent, StatsPanel } from "@/components/StatsPanel";
 import { Button } from "@/components/ui/button";
 import {
@@ -165,6 +166,7 @@ type UndoData = {
 };
 
 export function ComparePage() {
+  const isMobile = useIsMobile();
   const [mediaType, setMediaType] = useState<MediaType>("ANIME");
   const [isComparing, setIsComparing] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -490,22 +492,34 @@ export function ComparePage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ComparisonCard
-          item={item1}
-          ratingDisplay={getRatingDisplay(item1._id, true)}
+      {isMobile ? (
+        <MobileComparisonSwipe
+          item1={item1}
+          item2={item2}
+          ratingDisplay1={getRatingDisplay(item1._id, true)}
+          ratingDisplay2={getRatingDisplay(item2._id, false)}
           disabled={isComparing || showResults}
-          onClick={() => handleChoice(item1._id, item2._id)}
-          resultState={getResultState(item1._id)}
+          onChoice={handleChoice}
+          getResultState={getResultState}
         />
-        <ComparisonCard
-          item={item2}
-          ratingDisplay={getRatingDisplay(item2._id, false)}
-          disabled={isComparing || showResults}
-          onClick={() => handleChoice(item2._id, item1._id)}
-          resultState={getResultState(item2._id)}
-        />
-      </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-4">
+          <ComparisonCard
+            item={item1}
+            ratingDisplay={getRatingDisplay(item1._id, true)}
+            disabled={isComparing || showResults}
+            onClick={() => handleChoice(item1._id, item2._id)}
+            resultState={getResultState(item1._id)}
+          />
+          <ComparisonCard
+            item={item2}
+            ratingDisplay={getRatingDisplay(item2._id, false)}
+            disabled={isComparing || showResults}
+            onClick={() => handleChoice(item2._id, item1._id)}
+            resultState={getResultState(item2._id)}
+          />
+        </div>
+      )}
 
       <div className="flex items-center justify-center gap-4">
         <Button

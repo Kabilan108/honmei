@@ -1,13 +1,13 @@
 import type { JSX, ReactNode } from "react";
 
-type WatchStatus =
+export type WatchStatus =
   | "COMPLETED"
   | "WATCHING"
   | "PLAN_TO_WATCH"
   | "DROPPED"
   | "ON_HOLD";
 
-interface ComparisonItem {
+export interface ComparisonItem {
   _id: string;
   rating: number;
   rd: number;
@@ -24,7 +24,7 @@ interface ComparisonItem {
   format?: string | null;
 }
 
-const STATUS_LABELS: Record<WatchStatus, string> = {
+export const STATUS_LABELS: Record<WatchStatus, string> = {
   COMPLETED: "Completed",
   WATCHING: "Watching",
   PLAN_TO_WATCH: "Plan to Watch",
@@ -32,7 +32,7 @@ const STATUS_LABELS: Record<WatchStatus, string> = {
   ON_HOLD: "On Hold",
 };
 
-const STATUS_COLORS: Record<WatchStatus, string> = {
+export const STATUS_COLORS: Record<WatchStatus, string> = {
   COMPLETED: "bg-status-completed text-status-completed-fg",
   WATCHING: "bg-status-watching text-status-watching-fg",
   PLAN_TO_WATCH: "bg-status-plan text-status-plan-fg",
@@ -40,7 +40,7 @@ const STATUS_COLORS: Record<WatchStatus, string> = {
   ON_HOLD: "bg-status-hold text-status-hold-fg",
 };
 
-type ResultState = "winner" | "loser" | "tie" | null;
+export type ResultState = "winner" | "loser" | "tie" | null;
 
 interface ComparisonCardProps {
   item: ComparisonItem;
