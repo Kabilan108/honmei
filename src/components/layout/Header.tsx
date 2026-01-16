@@ -1,13 +1,20 @@
 import { Authenticated, Unauthenticated } from "convex/react";
+import type { LucideIcon } from "lucide-react";
 import { GitCompare, Home, Search, Settings } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { SignInDialog, UserMenu } from "@/components/auth";
 import { useIsMobile } from "@/hooks/useMediaQuery";
+import { UNRANKED_NOTIFICATION_THRESHOLD } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-const UNRANKED_NOTIFICATION_THRESHOLD = 3;
+export interface NavItem {
+  path: string;
+  icon: LucideIcon;
+  label: string;
+  showBadge?: boolean;
+}
 
-const navItems = [
+export const navItems: NavItem[] = [
   { path: "/", icon: Home, label: "Library" },
   { path: "/search", icon: Search, label: "Search" },
   { path: "/compare", icon: GitCompare, label: "Compare", showBadge: true },
@@ -18,10 +25,41 @@ interface HeaderProps {
   unrankedCount: number;
 }
 
-export function Header({ unrankedCount }: HeaderProps) {
+function DesktopNav({ unrankedCount }: { unrankedCount: number }) {
   const location = useLocation();
-  const isMobile = useIsMobile();
   const showBadge = unrankedCount >= UNRANKED_NOTIFICATION_THRESHOLD;
+
+  return (
+    <nav className="flex items-center gap-1">
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = location.pathname === item.path;
+
+        return (
+          <Link
+            key={item.path}
+            to={item.path}
+            className={cn(
+              "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors relative",
+              isActive
+                ? "text-primary/80"
+                : "text-foreground-muted hover:text-foreground",
+            )}
+          >
+            <Icon className="w-4 h-4" />
+            <span>{item.label}</span>
+            {item.showBadge && showBadge && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full" />
+            )}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function Header({ unrankedCount }: HeaderProps) {
+  const isMobile = useIsMobile();
 
   return (
     <header className="sticky top-0 z-50 h-14 bg-surface border-b border-border">
@@ -32,42 +70,18 @@ export function Header({ unrankedCount }: HeaderProps) {
           </Link>
 
           {!isMobile && (
-            <nav className="flex items-center gap-1">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = location.pathname === item.path;
-
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={cn(
-                      "flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium transition-colors relative",
-                      isActive
-                        ? "text-primary/80"
-                        : "text-foreground-muted hover:text-foreground",
-                    )}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span>{item.label}</span>
-                    {item.showBadge && showBadge && (
-                      <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full" />
-                    )}
-                  </Link>
-                );
-              })}
-            </nav>
+            <Authenticated>
+              <DesktopNav unrankedCount={unrankedCount} />
+            </Authenticated>
           )}
         </div>
 
-        <div className="flex items-center">
-          <Authenticated>
-            <UserMenu />
-          </Authenticated>
-          <Unauthenticated>
-            <SignInDialog variant="header" />
-          </Unauthenticated>
-        </div>
+        <Authenticated>
+          <UserMenu />
+        </Authenticated>
+        <Unauthenticated>
+          <SignInDialog variant="header" />
+        </Unauthenticated>
       </div>
     </header>
   );

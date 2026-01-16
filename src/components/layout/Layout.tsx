@@ -1,20 +1,13 @@
-import { useQuery } from "convex/react";
-import { GitCompare, Home, Search, Settings } from "lucide-react";
+import { Authenticated, useQuery } from "convex/react";
 import { useMemo } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
-import { RD_CONFIDENCE_THRESHOLD } from "@/lib/constants";
+import {
+  RD_CONFIDENCE_THRESHOLD,
+  UNRANKED_NOTIFICATION_THRESHOLD,
+} from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { api } from "../../../convex/_generated/api";
-import { Header } from "./Header";
-
-const UNRANKED_NOTIFICATION_THRESHOLD = 3;
-
-const navItems = [
-  { path: "/", icon: Home, label: "Library" },
-  { path: "/search", icon: Search, label: "Search" },
-  { path: "/compare", icon: GitCompare, label: "Compare", showBadge: true },
-  { path: "/settings", icon: Settings, label: "Settings" },
-];
+import { Header, navItems } from "./Header";
 
 function BottomNav({ unrankedCount }: { unrankedCount: number }) {
   const location = useLocation();
@@ -71,7 +64,9 @@ export function Layout() {
         </div>
       </main>
 
-      <BottomNav unrankedCount={unrankedCount} />
+      <Authenticated>
+        <BottomNav unrankedCount={unrankedCount} />
+      </Authenticated>
     </div>
   );
 }
