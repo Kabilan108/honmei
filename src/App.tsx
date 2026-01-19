@@ -4,6 +4,8 @@ import { ComparePage } from "./pages/ComparePage";
 import { HomePage } from "./pages/HomePage";
 import { SearchPage } from "./pages/SearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { Analytics } from "@vercel/analytics/react"
+import { SpeedInsights } from "@vercel/speed-insights/react"
 
 export function App() {
   return (
@@ -16,6 +18,8 @@ export function App() {
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Routes>
+      <Analytics />
+      <SpeedInsights />
     </BrowserRouter>
   );
 }
