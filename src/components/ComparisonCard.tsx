@@ -48,6 +48,7 @@ interface ComparisonCardProps {
   disabled: boolean;
   onClick: () => void;
   resultState?: ResultState;
+  compact?: boolean;
 }
 
 function getResultStyles(resultState: ResultState): string {
@@ -69,9 +70,71 @@ export function ComparisonCard({
   disabled,
   onClick,
   resultState = null,
+  compact = false,
 }: ComparisonCardProps): JSX.Element {
   const resultStyles = getResultStyles(resultState);
   const isShowingResult = resultState !== null;
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        className={`bg-surface border-2 rounded-lg overflow-hidden transition-all duration-300 text-left focus:outline-none w-full ${resultStyles} ${
+          isShowingResult
+            ? ""
+            : "hover:border-primary active:scale-[0.98] hover:shadow-lg hover:shadow-primary/10 focus:border-primary"
+        }`}
+      >
+        <div className="relative">
+          <div className="aspect-[2/3] bg-surface-raised relative overflow-hidden">
+            <img
+              src={item.mediaCoverImage}
+              alt={item.mediaTitle}
+              loading="lazy"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent" />
+
+            <div className="absolute bottom-0 left-0 right-0 p-2.5 space-y-1.5">
+              <h3
+                className="text-sm font-semibold line-clamp-2 leading-tight"
+                title={item.mediaTitle}
+              >
+                {item.mediaTitle}
+              </h3>
+
+              <div className="flex items-center gap-1 flex-wrap">
+                <span
+                  className={`text-[9px] px-1 py-0.5 rounded-sm ${STATUS_COLORS[item.watchStatus]}`}
+                >
+                  {STATUS_LABELS[item.watchStatus]}
+                </span>
+                {item.mediaGenres.slice(0, 1).map((genre) => (
+                  <span
+                    key={genre}
+                    className="text-[9px] text-foreground-muted bg-white/10 px-1 py-0.5 rounded-sm"
+                  >
+                    {genre}
+                  </span>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between pt-0.5">
+                <span className="font-mono font-bold text-sm">
+                  {ratingDisplay}
+                </span>
+                <span className="text-[9px] text-foreground-muted">
+                  {item.comparisonCount}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </button>
+    );
+  }
 
   return (
     <button

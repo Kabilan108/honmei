@@ -165,6 +165,7 @@ type UndoData = {
 };
 
 export function ComparePage() {
+  const isMobile = useIsMobile();
   const [mediaType, setMediaType] = useState<MediaType>("ANIME");
   const [isComparing, setIsComparing] = useState(false);
   const [showResults, setShowResults] = useState(false);
@@ -490,20 +491,29 @@ export function ComparePage() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-2 md:gap-4 relative py-4 md:py-0">
         <ComparisonCard
           item={item1}
           ratingDisplay={getRatingDisplay(item1._id, true)}
           disabled={isComparing || showResults}
           onClick={() => handleChoice(item1._id, item2._id)}
           resultState={getResultState(item1._id)}
+          compact={isMobile}
         />
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none md:hidden">
+          <div className="w-8 h-8 rounded-full bg-surface border-2 border-border flex items-center justify-center shadow-lg">
+            <span className="text-[10px] font-bold text-foreground-muted tracking-tight">
+              VS
+            </span>
+          </div>
+        </div>
         <ComparisonCard
           item={item2}
           ratingDisplay={getRatingDisplay(item2._id, false)}
           disabled={isComparing || showResults}
           onClick={() => handleChoice(item2._id, item1._id)}
           resultState={getResultState(item2._id)}
+          compact={isMobile}
         />
       </div>
 
