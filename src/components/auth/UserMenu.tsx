@@ -25,11 +25,8 @@ export function UserMenu() {
     ? user.firstName.charAt(0).toUpperCase()
     : (user.emailAddresses[0]?.emailAddress?.charAt(0).toUpperCase() ?? "U");
 
-  const avatarButton = (
-    <button
-      type="button"
-      className="w-8 h-8 rounded-full overflow-hidden focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:ring-offset-surface"
-    >
+  const avatar = (
+    <div className="w-8 h-8 rounded-full overflow-hidden">
       {user.imageUrl ? (
         <img
           src={user.imageUrl}
@@ -41,14 +38,14 @@ export function UserMenu() {
           {initials}
         </div>
       )}
-    </button>
+    </div>
   );
 
   if (isMobile) {
     return (
       <>
         <button type="button" onClick={() => setDrawerOpen(true)}>
-          {avatarButton}
+          {avatar}
         </button>
         <UserMenuDrawer
           open={drawerOpen}
@@ -64,7 +61,7 @@ export function UserMenu() {
     <>
       <DropdownMenu>
         <DropdownMenuTrigger className="outline-none">
-          {avatarButton}
+          {avatar}
         </DropdownMenuTrigger>
         <DropdownMenuContent
           side="bottom"
