@@ -27,7 +27,7 @@ import {
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 
-const RESULT_DISPLAY_MS = 2000;
+const RESULT_DISPLAY_MS = 1000;
 const MOBILE_BREAKPOINT = 768;
 
 function useIsMobile(): boolean {
